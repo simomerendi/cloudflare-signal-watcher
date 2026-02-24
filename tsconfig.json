@@ -35,6 +35,11 @@
 		"strict": true,
 
 		/* Skip type checking all .d.ts files. */
-		"skipLibCheck": true
+		"skipLibCheck": true,
+
+		/* Workers runtime globals (DurableObject, DurableObjectState, Request, Response, etc.)
+		 * The generated worker-configuration.d.ts (Env interface) is picked up automatically
+		 * as a root-level .d.ts file and does not need to be listed here. */
+		"types": ["@cloudflare/workers-types"]
 	}
 }
