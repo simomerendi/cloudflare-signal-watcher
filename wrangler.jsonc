@@ -25,5 +25,10 @@
 	},
 	"observability": {
 		"enabled": true
-	}
+	},
+	// Bundle .sql migration files as plain text so they can be imported
+	// into the Worker and passed to drizzle-orm/durable-sqlite/migrator at runtime.
+	"rules": [
+		{ "type": "Text", "globs": ["**/*.sql"] }
+	]
 }
