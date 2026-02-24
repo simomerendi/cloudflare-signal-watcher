@@ -1,0 +1,33 @@
+{
+	"name": "cloudflare-signal-watcher",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"start": "wrangler dev",
+		"cf-typegen": "wrangler types",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:e2e": "vitest run --config vitest.e2e.config.ts",
+		"migrate:generate": "drizzle-kit generate",
+		"migrate:apply": "drizzle-kit migrate"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.12.16",
+		"@cloudflare/workers-types": "^4.20260303.0",
+		"@vitest/runner": "3.2.4",
+		"@vitest/snapshot": "3.2.4",
+		"drizzle-kit": "^0.31.9",
+		"typescript": "^5.5.2",
+		"vitest": "^3.2.4",
+		"wrangler": "^3.101.0"
+	},
+	"dependencies": {
+		"@hono/zod-validator": "^0.7.6",
+		"drizzle-orm": "^0.45.1",
+		"hono": "^4.12.2",
+		"zod": "^4.3.6"
+	}
+}

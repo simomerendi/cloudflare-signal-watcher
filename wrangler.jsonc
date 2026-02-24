@@ -1,0 +1,29 @@
+{
+	"name": "cloudflare-signal-watcher",
+	"main": "src/index.ts",
+	"compatibility_date": "2025-01-01",
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["ConfigDO", "WatcherDO"]
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "CONFIG_DO",
+				"class_name": "ConfigDO"
+			},
+			{
+				"name": "WATCHER_DO",
+				"class_name": "WatcherDO"
+			}
+		]
+	},
+	"vars": {
+		"MULTI_TENANT": "false"
+	},
+	"observability": {
+		"enabled": true
+	}
+}
