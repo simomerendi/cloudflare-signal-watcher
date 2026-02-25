@@ -16,12 +16,51 @@
 import { DurableObject } from 'cloudflare:workers';
 import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
+import { and, desc, eq, gt } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { signals } from '../db/schema';
 import migrations from '../../drizzle/migrations';
+
+// buildApp uses Hono's chain syntax so the full route schema is captured in
+// the return type. This lets `testClient(instance.app)` be fully type-safe.
+function buildApp(db: ReturnType<typeof drizzle>) {
+	return new Hono()
+		// List signals — ?since=ISO&limit=50&type=sourceType
+		.get('/signals', (c) => {
+			const since = c.req.query('since');
+			const limit = Math.min(parseInt(c.req.query('limit') ?? '50'), 200);
+			const type = c.req.query('type');
+
+			const conditions = [
+				...(since ? [gt(signals.detectedAt, since)] : []),
+				...(type ? [eq(signals.sourceType, type)] : []),
+			];
+
+			const rows = db
+				.select()
+				.from(signals)
+				.where(conditions.length ? and(...conditions) : undefined)
+				.orderBy(desc(signals.detectedAt))
+				.limit(limit)
+				.all();
+
+			return c.json({ signals: rows, count: rows.length });
+		})
+		// Get one signal by id
+		.get('/signals/:id', (c) => {
+			const row = db.select().from(signals).where(eq(signals.id, c.req.param('id'))).get();
+			if (!row) return c.json({ error: 'Not found' }, 404);
+			return c.json(row);
+		});
+}
+
+// Exported so tests can use testClient(instance.app) with full type inference.
+export type WatcherApp = ReturnType<typeof buildApp>;
 
 export class WatcherDO extends DurableObject<Env> {
 	readonly db: ReturnType<typeof drizzle>;
-	private readonly app: Hono;
+	// Public so tests can pass it to testClient without going through stub.fetch().
+	readonly app: WatcherApp;
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
@@ -35,7 +74,7 @@ export class WatcherDO extends DurableObject<Env> {
 			await migrate(this.db, migrations);
 		});
 
-		this.app = this.buildApp();
+		this.app = buildApp(this.db);
 	}
 
 	async fetch(request: Request): Promise<Response> {
@@ -44,10 +83,5 @@ export class WatcherDO extends DurableObject<Env> {
 
 	async alarm(): Promise<void> {
 		// Scheduling logic added once routes are wired up
-	}
-
-	private buildApp(): Hono {
-		const app = new Hono();
-		return app;
 	}
 }

@@ -1,0 +1,15 @@
+{
+	"extends": "../tsconfig.json",
+	"compilerOptions": {
+		// Add vitest-pool-workers types so `cloudflare:test` and vitest globals
+		// (describe, it, expect) are recognised in test files only.
+		// Not included in the root tsconfig to avoid polluting production code.
+		"types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers"]
+	},
+	// Include test files + the root-level .d.ts files that declare Env.
+	"include": ["./**/*.ts", "../worker-configuration.d.ts", "../worker-secrets.d.ts"],
+	// Override the inherited exclude from the root tsconfig. Without this override,
+	// the root's `exclude: ["test"]` resolves to <project-root>/test and accidentally
+	// excludes every file in this directory from its own tsconfig.
+	"exclude": ["node_modules"]
+}

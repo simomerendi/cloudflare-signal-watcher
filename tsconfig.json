@@ -41,5 +41,8 @@
 		 * The generated worker-configuration.d.ts (Env interface) is picked up automatically
 		 * as a root-level .d.ts file and does not need to be listed here. */
 		"types": ["@cloudflare/workers-types"]
-	}
+	},
+	// Exclude test files from the main compilation — they have their own
+	// tsconfig at test/tsconfig.json which adds vitest-pool-workers types.
+	"exclude": ["node_modules", "test"]
 }

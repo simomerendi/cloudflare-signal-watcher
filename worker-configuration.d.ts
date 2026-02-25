@@ -3,5 +3,9 @@
 interface Env {
 	MULTI_TENANT: "false";
 	CONFIG_DO: DurableObjectNamespace /* ConfigDO */;
-	WATCHER_DO: DurableObjectNamespace /* WatcherDO */;
+	WATCHER_DO: DurableObjectNamespace<import("./src/index").WatcherDO>;
+}
+declare module "*.sql" {
+	const value: string;
+	export default value;
 }
