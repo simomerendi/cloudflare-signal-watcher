@@ -119,3 +119,15 @@ describe('POST /configure', () => {
 		expect(result.status).toBe(400);
 	});
 });
+
+describe('DELETE /', () => {
+	// `index` is Hono's testClient convention for the root path `/`
+	it('wipes all signals from the database and removes config from KV', async () => {
+		const result = await runInDurableObject(stub('unit-delete'), async (instance: WatcherDO) => {
+			const res = await testClient(instance.app).index.$delete();
+			return { status: res.status, body: await res.json() };
+		});
+		expect(result.status).toBe(200);
+		expect(result.body).toEqual({ ok: true });
+	});
+});

@@ -159,3 +159,32 @@ describe('POST /configure', () => {
 		expect(result.status).toBe(400);
 	});
 });
+
+describe('DELETE /', () => {
+	it('wipes all collected signals from SQLite', async () => {
+		const count = await runInDurableObject(stub('integ-delete-signals'), async (instance: WatcherDO) => {
+			instance.db.insert(signals).values([makeSignal({ id: 's1' }), makeSignal({ id: 's2' })]).run();
+			// `index` is Hono's testClient convention for the root path `/`
+			await testClient(instance.app).index.$delete();
+			const res = await testClient(instance.app).signals.$get();
+			return (await res.json()).count;
+		});
+		expect(count).toBe(0);
+	});
+
+	it('removes the stored config from KV so lastCheckedAt is not preserved on next configure', async () => {
+		// Configure → delete → re-configure. If KV was truly wiped, lastCheckedAt
+		// cannot be carried forward and must come back as null.
+		const body = await runInDurableObject(stub('integ-delete-config'), async (instance: WatcherDO) => {
+			await testClient(instance.app).configure.$post({
+				json: { name: 'w', type: 'rss', schedule: '30m', config: {} },
+			});
+			await testClient(instance.app).index.$delete();
+			const res = await testClient(instance.app).configure.$post({
+				json: { name: 'w', type: 'rss', schedule: '30m', config: {} },
+			});
+			return res.json();
+		});
+		expect(body.lastCheckedAt).toBeNull();
+	});
+});

@@ -98,6 +98,14 @@ function buildApp(db: ReturnType<typeof drizzle>, storage: DurableObjectStorage)
 				await storage.setAlarm(Date.now() + parseScheduleMs(stored.schedule));
 				return c.json(stored);
 			})
+			// Called by ConfigDO when a watcher is deleted. Cancels the alarm, removes
+			// the stored config from KV, and wipes all signals from SQLite.
+			.delete('/', async (c) => {
+				await storage.deleteAlarm();
+				await storage.delete('config');
+				db.delete(signals).run();
+				return c.json({ ok: true });
+			})
 	);
 }
 
