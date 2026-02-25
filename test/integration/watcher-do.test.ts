@@ -149,13 +149,13 @@ describe('POST /configure', () => {
 		});
 	});
 
-	it('returns 500 for an invalid schedule string', async () => {
+	it('returns 400 for an invalid schedule string', async () => {
 		const result = await runInDurableObject(stub('integ-configure-bad-schedule'), async (instance: WatcherDO) => {
 			const res = await testClient(instance.app).configure.$post({
 				json: { name: 'bad', type: 'rss', schedule: 'invalid', config: {} },
 			});
 			return { status: res.status };
 		});
-		expect(result.status).toBe(500);
+		expect(result.status).toBe(400);
 	});
 });

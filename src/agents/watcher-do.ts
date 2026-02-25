@@ -18,8 +18,19 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 import { signals } from '../db/schema';
 import migrations from '../../drizzle/migrations';
+
+// Zod schema for POST /configure request body.
+// Validates shape and the schedule format before the handler runs.
+const ConfigureBodySchema = z.object({
+	name: z.string().min(1),
+	type: z.string().min(1),
+	schedule: z.string().regex(/^\d+(m|h|d)$/, 'Expected e.g. "30m", "2h", "1d"'),
+	config: z.record(z.string(), z.unknown()),
+});
 
 // Persisted to KV storage under the key 'config'.
 // Set by POST /configure (called from ConfigDO) and read on every alarm tick.
@@ -76,8 +87,9 @@ function buildApp(db: ReturnType<typeof drizzle>, storage: DurableObjectStorage)
 			})
 			// Called by ConfigDO to (re)configure this watcher and start/restart the alarm.
 			// Preserves lastCheckedAt on reconfigure so already-seen signals aren't re-fetched.
-			.post('/configure', async (c) => {
-				const body = await c.req.json<Omit<StoredConfig, 'lastCheckedAt'>>();
+			// zValidator rejects malformed bodies with 400 before the handler runs.
+			.post('/configure', zValidator('json', ConfigureBodySchema), async (c) => {
+				const body = c.req.valid('json');
 				const existing = await storage.get<StoredConfig>('config');
 				const stored: StoredConfig = { ...body, lastCheckedAt: existing?.lastCheckedAt ?? null };
 				await storage.put('config', stored);
