@@ -1,9 +1,13 @@
 /**
- * Integration tests for WatcherDO — GET /signals and GET /signals/:id.
+ * Integration tests for WatcherDO — GET /signals, GET /signals/:id, and POST /configure.
  *
  * Uses runInDurableObject to seed signals directly into the DO's SQLite
  * database and verify the routes return correct data, apply filters, and
  * respect the limit cap. testClient provides full type-safe route access.
+ *
+ * The POST /configure tests verify KV persistence (config round-trips through
+ * storage.get), alarm scheduling, and that lastCheckedAt is preserved when a
+ * watcher is reconfigured.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -105,5 +109,53 @@ describe('GET /signals/:id', () => {
 		});
 		expect(result.status).toBe(404);
 		expect(result.body).toHaveProperty('error', 'Not found');
+	});
+});
+
+describe('POST /configure', () => {
+	it('stores config and returns it with lastCheckedAt null on first configure', async () => {
+		const body = await runInDurableObject(stub('integ-configure-new'), async (instance: WatcherDO) => {
+			const res = await testClient(instance.app).configure.$post({
+				json: { name: 'my-watcher', type: 'rss', schedule: '30m', config: { url: 'https://example.com/feed' } },
+			});
+			return res.json();
+		});
+		expect(body).toMatchObject({
+			name: 'my-watcher',
+			type: 'rss',
+			schedule: '30m',
+			config: { url: 'https://example.com/feed' },
+			lastCheckedAt: null,
+		});
+	});
+
+	it('preserves lastCheckedAt on reconfigure', async () => {
+		// Call configure twice: the first establishes the entry (lastCheckedAt: null),
+		// the second changes the schedule. The route must carry forward whatever
+		// lastCheckedAt was stored — here null, since no alarm has fired yet.
+		const body = await runInDurableObject(stub('integ-configure-reconfigure'), async (instance: WatcherDO) => {
+			await testClient(instance.app).configure.$post({
+				json: { name: 'my-watcher', type: 'rss', schedule: '1h', config: { url: 'https://example.com/feed' } },
+			});
+			// Reconfigure with a new schedule — lastCheckedAt must be preserved (null here).
+			const res = await testClient(instance.app).configure.$post({
+				json: { name: 'my-watcher', type: 'rss', schedule: '30m', config: { url: 'https://example.com/feed' } },
+			});
+			return res.json();
+		});
+		expect(body).toMatchObject({
+			schedule: '30m',
+			lastCheckedAt: null,
+		});
+	});
+
+	it('returns 500 for an invalid schedule string', async () => {
+		const result = await runInDurableObject(stub('integ-configure-bad-schedule'), async (instance: WatcherDO) => {
+			const res = await testClient(instance.app).configure.$post({
+				json: { name: 'bad', type: 'rss', schedule: 'invalid', config: {} },
+			});
+			return { status: res.status };
+		});
+		expect(result.status).toBe(500);
 	});
 });

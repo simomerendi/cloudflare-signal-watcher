@@ -1,5 +1,6 @@
 /**
- * Unit tests for WatcherDO — GET /signals and GET /signals/:id.
+ * Unit tests for WatcherDO — GET /signals, GET /signals/:id, and POST /configure.
+ * Also covers the parseScheduleMs helper directly.
  *
  * Tests exercise routes against an empty database (no seeding).
  * They verify the response shape, status codes, and that query params are
@@ -12,7 +13,7 @@
 import { describe, it, expect } from 'vitest';
 import { env, runInDurableObject } from 'cloudflare:test';
 import { testClient } from 'hono/testing';
-import type { WatcherDO } from '../../src/agents/watcher-do';
+import { parseScheduleMs, type WatcherDO } from '../../src/agents/watcher-do';
 
 declare module 'cloudflare:test' {
 	interface ProvidedEnv extends Env {}
@@ -65,5 +66,56 @@ describe('GET /signals/:id', () => {
 		});
 		expect(result.status).toBe(404);
 		expect(result.body).toHaveProperty('error', 'Not found');
+	});
+});
+
+describe('parseScheduleMs', () => {
+	it('converts minutes correctly', () => {
+		expect(parseScheduleMs('30m')).toBe(30 * 60_000);
+		expect(parseScheduleMs('1m')).toBe(60_000);
+	});
+
+	it('converts hours correctly', () => {
+		expect(parseScheduleMs('2h')).toBe(2 * 3_600_000);
+		expect(parseScheduleMs('1h')).toBe(3_600_000);
+	});
+
+	it('converts days correctly', () => {
+		expect(parseScheduleMs('1d')).toBe(86_400_000);
+		expect(parseScheduleMs('7d')).toBe(7 * 86_400_000);
+	});
+
+	it('throws on an invalid schedule string', () => {
+		expect(() => parseScheduleMs('30s')).toThrow('Invalid schedule');
+		expect(() => parseScheduleMs('abc')).toThrow('Invalid schedule');
+		expect(() => parseScheduleMs('')).toThrow('Invalid schedule');
+	});
+});
+
+describe('POST /configure', () => {
+	it('stores config and returns it with lastCheckedAt null on first configure', async () => {
+		const body = await runInDurableObject(stub('unit-configure-new'), async (instance: WatcherDO) => {
+			const res = await testClient(instance.app).configure.$post({
+				json: { name: 'my-watcher', type: 'rss', schedule: '30m', config: { url: 'https://example.com/feed' } },
+			});
+			return res.json();
+		});
+		expect(body).toMatchObject({
+			name: 'my-watcher',
+			type: 'rss',
+			schedule: '30m',
+			config: { url: 'https://example.com/feed' },
+			lastCheckedAt: null,
+		});
+	});
+
+	it('returns 500 for an invalid schedule string', async () => {
+		const result = await runInDurableObject(stub('unit-configure-bad-schedule'), async (instance: WatcherDO) => {
+			const res = await testClient(instance.app).configure.$post({
+				json: { name: 'bad', type: 'rss', schedule: 'invalid', config: {} },
+			});
+			return { status: res.status };
+		});
+		expect(result.status).toBe(500);
 	});
 });

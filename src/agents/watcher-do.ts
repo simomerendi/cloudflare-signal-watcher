@@ -21,37 +21,72 @@ import { Hono } from 'hono';
 import { signals } from '../db/schema';
 import migrations from '../../drizzle/migrations';
 
+// Persisted to KV storage under the key 'config'.
+// Set by POST /configure (called from ConfigDO) and read on every alarm tick.
+type StoredConfig = {
+	name: string;
+	type: string;
+	schedule: string; // "30m" | "2h" | "1d" etc.
+	config: Record<string, unknown>; // adapter-specific options
+	lastCheckedAt: string | null; // ISO timestamp; null until first run completes
+};
+
+/** Convert a schedule string like "30m", "2h", "1d" to milliseconds. */
+export function parseScheduleMs(schedule: string): number {
+	const match = schedule.match(/^(\d+)(m|h|d)$/);
+	if (!match) throw new Error(`Invalid schedule: "${schedule}". Expected e.g. "30m", "2h", "1d".`);
+	const value = parseInt(match[1], 10);
+	const unit = match[2];
+	if (unit === 'm') return value * 60_000;
+	if (unit === 'h') return value * 3_600_000;
+	return value * 86_400_000; // 'd'
+}
+
 // buildApp uses Hono's chain syntax so the full route schema is captured in
 // the return type. This lets `testClient(instance.app)` be fully type-safe.
-function buildApp(db: ReturnType<typeof drizzle>) {
-	return new Hono()
-		// List signals — ?since=ISO&limit=50&type=sourceType
-		.get('/signals', (c) => {
-			const since = c.req.query('since');
-			const limit = Math.min(parseInt(c.req.query('limit') ?? '50'), 200);
-			const type = c.req.query('type');
+function buildApp(db: ReturnType<typeof drizzle>, storage: DurableObjectStorage) {
+	return (
+		new Hono()
+			// List signals — ?since=ISO&limit=50&type=sourceType
+			.get('/signals', (c) => {
+				const since = c.req.query('since');
+				const limit = Math.min(parseInt(c.req.query('limit') ?? '50'), 200);
+				const type = c.req.query('type');
 
-			const conditions = [
-				...(since ? [gt(signals.detectedAt, since)] : []),
-				...(type ? [eq(signals.sourceType, type)] : []),
-			];
+				const conditions = [
+					...(since ? [gt(signals.detectedAt, since)] : []),
+					...(type ? [eq(signals.sourceType, type)] : []),
+				];
 
-			const rows = db
-				.select()
-				.from(signals)
-				.where(conditions.length ? and(...conditions) : undefined)
-				.orderBy(desc(signals.detectedAt))
-				.limit(limit)
-				.all();
+				const rows = db
+					.select()
+					.from(signals)
+					.where(conditions.length ? and(...conditions) : undefined)
+					.orderBy(desc(signals.detectedAt))
+					.limit(limit)
+					.all();
 
-			return c.json({ signals: rows, count: rows.length });
-		})
-		// Get one signal by id
-		.get('/signals/:id', (c) => {
-			const row = db.select().from(signals).where(eq(signals.id, c.req.param('id'))).get();
-			if (!row) return c.json({ error: 'Not found' }, 404);
-			return c.json(row);
-		});
+				return c.json({ signals: rows, count: rows.length });
+			})
+			// Get one signal by id
+			.get('/signals/:id', (c) => {
+				const row = db.select().from(signals).where(eq(signals.id, c.req.param('id'))).get();
+				if (!row) return c.json({ error: 'Not found' }, 404);
+				return c.json(row);
+			})
+			// Called by ConfigDO to (re)configure this watcher and start/restart the alarm.
+			// Preserves lastCheckedAt on reconfigure so already-seen signals aren't re-fetched.
+			.post('/configure', async (c) => {
+				const body = await c.req.json<Omit<StoredConfig, 'lastCheckedAt'>>();
+				const existing = await storage.get<StoredConfig>('config');
+				const stored: StoredConfig = { ...body, lastCheckedAt: existing?.lastCheckedAt ?? null };
+				await storage.put('config', stored);
+				// Cancel any existing alarm then schedule the next one from now.
+				await storage.deleteAlarm();
+				await storage.setAlarm(Date.now() + parseScheduleMs(stored.schedule));
+				return c.json(stored);
+			})
+	);
 }
 
 // Exported so tests can use testClient(instance.app) with full type inference.
@@ -74,7 +109,7 @@ export class WatcherDO extends DurableObject<Env> {
 			await migrate(this.db, migrations);
 		});
 
-		this.app = buildApp(this.db);
+		this.app = buildApp(this.db, ctx.storage);
 	}
 
 	async fetch(request: Request): Promise<Response> {
@@ -82,6 +117,6 @@ export class WatcherDO extends DurableObject<Env> {
 	}
 
 	async alarm(): Promise<void> {
-		// Scheduling logic added once routes are wired up
+		// Scheduling logic added once remaining routes are wired up
 	}
 }
