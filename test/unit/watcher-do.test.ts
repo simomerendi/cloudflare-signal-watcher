@@ -120,6 +120,29 @@ describe('POST /configure', () => {
 	});
 });
 
+describe('POST /trigger', () => {
+	it('returns ok when no config is stored — no-op, no crash', async () => {
+		const result = await runInDurableObject(stub('unit-trigger-no-config'), async (instance: WatcherDO) => {
+			const res = await testClient(instance.app).trigger.$post();
+			return { status: res.status, body: await res.json() };
+		});
+		expect(result.status).toBe(200);
+		expect(result.body).toEqual({ ok: true });
+	});
+
+	it('returns ok when the adapter type is not registered — no-op, no crash', async () => {
+		const result = await runInDurableObject(stub('unit-trigger-unknown-adapter'), async (instance: WatcherDO) => {
+			await testClient(instance.app).configure.$post({
+				json: { name: 'w', type: 'unregistered-type', schedule: '30m', config: {} },
+			});
+			const res = await testClient(instance.app).trigger.$post();
+			return { status: res.status, body: await res.json() };
+		});
+		expect(result.status).toBe(200);
+		expect(result.body).toEqual({ ok: true });
+	});
+});
+
 describe('DELETE /', () => {
 	// `index` is Hono's testClient convention for the root path `/`
 	it('wipes all signals from the database and removes config from KV', async () => {

@@ -21,6 +21,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { signals } from '../db/schema';
+import { adapters } from '../adapters';
 import migrations from '../../drizzle/migrations';
 
 // Zod schema for POST /configure request body.
@@ -42,6 +43,29 @@ type StoredConfig = {
 	lastCheckedAt: string | null; // ISO timestamp; null until first run completes
 };
 
+/**
+ * Run one poll cycle: look up the adapter for the stored config type, fetch
+ * new signals, upsert them (deduped by id), and stamp lastCheckedAt in KV.
+ *
+ * Called by alarm() on every scheduled tick and by POST /trigger for manual runs.
+ * Returns early (no-op) if no config is stored yet.
+ */
+async function runCheck(db: ReturnType<typeof drizzle>, storage: DurableObjectStorage, env: Env): Promise<void> {
+	const stored = await storage.get<StoredConfig>('config');
+	if (!stored) return;
+
+	const adapter = adapters.get(stored.type);
+	if (!adapter) return;
+
+	const fetched = await adapter.fetch(stored.config, stored.lastCheckedAt, env);
+	if (fetched.length > 0) {
+		db.insert(signals).values(fetched).onConflictDoNothing().run();
+	}
+
+	const updated: StoredConfig = { ...stored, lastCheckedAt: new Date().toISOString() };
+	await storage.put('config', updated);
+}
+
 /** Convert a schedule string like "30m", "2h", "1d" to milliseconds. */
 export function parseScheduleMs(schedule: string): number {
 	const match = schedule.match(/^(\d+)(m|h|d)$/);
@@ -55,7 +79,7 @@ export function parseScheduleMs(schedule: string): number {
 
 // buildApp uses Hono's chain syntax so the full route schema is captured in
 // the return type. This lets `testClient(instance.app)` be fully type-safe.
-function buildApp(db: ReturnType<typeof drizzle>, storage: DurableObjectStorage) {
+function buildApp(db: ReturnType<typeof drizzle>, storage: DurableObjectStorage, env: Env) {
 	return (
 		new Hono()
 			// List signals — ?since=ISO&limit=50&type=sourceType
@@ -106,6 +130,13 @@ function buildApp(db: ReturnType<typeof drizzle>, storage: DurableObjectStorage)
 				db.delete(signals).run();
 				return c.json({ ok: true });
 			})
+			// Manually trigger one poll cycle — useful for testing and the /trigger HTTP endpoint.
+			// Runs the same logic as alarm(): fetch new signals and stamp lastCheckedAt.
+			// No-ops if config is not stored yet or the adapter type is not registered.
+			.post('/trigger', async (c) => {
+				await runCheck(db, storage, env);
+				return c.json({ ok: true });
+			})
 	);
 }
 
@@ -116,9 +147,12 @@ export class WatcherDO extends DurableObject<Env> {
 	readonly db: ReturnType<typeof drizzle>;
 	// Public so tests can pass it to testClient without going through stub.fetch().
 	readonly app: WatcherApp;
+	private readonly storage: DurableObjectStorage;
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
+
+		this.storage = ctx.storage;
 
 		// drizzle-orm/durable-sqlite is a sync driver — queries use .all() / .get() / .run().
 		this.db = drizzle(ctx.storage);
@@ -129,7 +163,7 @@ export class WatcherDO extends DurableObject<Env> {
 			await migrate(this.db, migrations);
 		});
 
-		this.app = buildApp(this.db, ctx.storage);
+		this.app = buildApp(this.db, ctx.storage, env);
 	}
 
 	async fetch(request: Request): Promise<Response> {
@@ -137,6 +171,10 @@ export class WatcherDO extends DurableObject<Env> {
 	}
 
 	async alarm(): Promise<void> {
-		// Scheduling logic added once remaining routes are wired up
+		await runCheck(this.db, this.storage, this.env);
+		const stored = await this.storage.get<StoredConfig>('config');
+		if (stored) {
+			await this.storage.setAlarm(Date.now() + parseScheduleMs(stored.schedule));
+		}
 	}
 }

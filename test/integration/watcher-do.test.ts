@@ -10,12 +10,13 @@
  * watcher is reconfigured.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { env, runInDurableObject } from 'cloudflare:test';
 import { testClient } from 'hono/testing';
 import type { WatcherDO } from '../../src/agents/watcher-do';
 import { signals } from '../../src/db/schema';
 import type { SignalInsert } from '../../src/db/schema';
+import { adapters, type Signal } from '../../src/adapters';
 
 declare module 'cloudflare:test' {
 	interface ProvidedEnv extends Env {}
@@ -157,6 +158,73 @@ describe('POST /configure', () => {
 			return { status: res.status };
 		});
 		expect(result.status).toBe(400);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// POST /trigger
+// ---------------------------------------------------------------------------
+// A mock adapter registered only for this describe block. beforeAll/afterAll
+// keep the adapters map clean so other tests are not affected.
+
+const MOCK_TYPE = 'mock-trigger';
+
+const mockSignal: Signal = {
+	id: 'mock-signal-1',
+	watcherName: 'trigger-watcher',
+	sourceType: MOCK_TYPE,
+	title: 'Mock Signal',
+	url: 'https://example.com/mock',
+	metadata: {},
+};
+
+describe('POST /trigger', () => {
+	beforeAll(() => {
+		adapters.set(MOCK_TYPE, { type: MOCK_TYPE, fetch: async () => [mockSignal] });
+	});
+	afterAll(() => {
+		adapters.delete(MOCK_TYPE);
+	});
+
+	it('fetches signals from the adapter and stores them so GET /signals returns them', async () => {
+		const body = await runInDurableObject(stub('integ-trigger-fetch'), async (instance: WatcherDO) => {
+			await testClient(instance.app).configure.$post({
+				json: { name: 'trigger-watcher', type: MOCK_TYPE, schedule: '30m', config: {} },
+			});
+			await testClient(instance.app).trigger.$post();
+			const res = await testClient(instance.app).signals.$get();
+			return res.json();
+		});
+		expect(body.count).toBe(1);
+		expect(body.signals[0].id).toBe('mock-signal-1');
+	});
+
+	it('does not store duplicate signals when triggered twice — onConflictDoNothing', async () => {
+		const body = await runInDurableObject(stub('integ-trigger-dedup'), async (instance: WatcherDO) => {
+			await testClient(instance.app).configure.$post({
+				json: { name: 'trigger-watcher', type: MOCK_TYPE, schedule: '30m', config: {} },
+			});
+			await testClient(instance.app).trigger.$post();
+			await testClient(instance.app).trigger.$post();
+			const res = await testClient(instance.app).signals.$get();
+			return res.json();
+		});
+		expect(body.count).toBe(1);
+	});
+
+	it('updates lastCheckedAt in KV — reconfigure after trigger preserves a non-null value', async () => {
+		const body = await runInDurableObject(stub('integ-trigger-lastchecked'), async (instance: WatcherDO) => {
+			await testClient(instance.app).configure.$post({
+				json: { name: 'trigger-watcher', type: MOCK_TYPE, schedule: '30m', config: {} },
+			});
+			await testClient(instance.app).trigger.$post();
+			// Re-configure preserves whatever lastCheckedAt was stored in KV.
+			const res = await testClient(instance.app).configure.$post({
+				json: { name: 'trigger-watcher', type: MOCK_TYPE, schedule: '30m', config: {} },
+			});
+			return res.json();
+		});
+		expect(body.lastCheckedAt).not.toBeNull();
 	});
 });
 
