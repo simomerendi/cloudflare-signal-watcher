@@ -1,18 +1,13 @@
 /**
- * Unit tests for WatcherDO — GET /signals, GET /signals/:id, and POST /configure.
- * Also covers the parseScheduleMs helper directly.
+ * Unit tests for WatcherDO RPC methods.
  *
- * Tests exercise routes against an empty database (no seeding).
- * They verify the response shape, status codes, and that query params are
- * accepted without error. Integration tests cover behaviour with real data.
- *
- * Uses runInDurableObject + testClient so every assertion is fully type-safe —
- * no manual json<T>() casts or `as` assertions needed.
+ * Tests exercise methods against an empty database (no seeding) to verify
+ * default return shapes, parameter handling, and error cases.
+ * Integration tests cover behaviour with real data.
  */
 
 import { describe, it, expect } from 'vitest';
 import { env, runInDurableObject } from 'cloudflare:test';
-import { testClient } from 'hono/testing';
 import { parseScheduleMs, type WatcherDO } from '../../src/agents/watcher-do';
 
 declare module 'cloudflare:test' {
@@ -23,49 +18,29 @@ function stub(name: string) {
 	return env.WATCHER_DO.get(env.WATCHER_DO.idFromName(name));
 }
 
-describe('GET /signals', () => {
+describe('getSignals', () => {
 	it('returns an empty list when no signals exist', async () => {
-		const body = await runInDurableObject(stub('unit-empty'), async (instance: WatcherDO) => {
-			const res = await testClient(instance.app).signals.$get();
-			return res.json();
+		const result = await runInDurableObject(stub('unit-empty'), async (instance: WatcherDO) => {
+			return instance.getSignals({});
 		});
-		expect(body.signals).toEqual([]);
-		expect(body.count).toBe(0);
+		expect(result.signals).toEqual([]);
+		expect(result.count).toBe(0);
 	});
 
-	it('accepts a limit query param', async () => {
-		const body = await runInDurableObject(stub('unit-limit'), async (instance: WatcherDO) => {
-			const res = await testClient(instance.app).signals.$get({ query: { limit: '10' } });
-			return res.json();
+	it('accepts optional filter params without error', async () => {
+		const result = await runInDurableObject(stub('unit-params'), async (instance: WatcherDO) => {
+			return instance.getSignals({ since: '2024-01-01T00:00:00Z', limit: 10, type: 'rss' });
 		});
-		expect(body.signals).toEqual([]);
-	});
-
-	it('accepts a since query param', async () => {
-		const body = await runInDurableObject(stub('unit-since'), async (instance: WatcherDO) => {
-			const res = await testClient(instance.app).signals.$get({ query: { since: '2024-01-01T00:00:00Z' } });
-			return res.json();
-		});
-		expect(body.signals).toEqual([]);
-	});
-
-	it('accepts a type query param', async () => {
-		const body = await runInDurableObject(stub('unit-type'), async (instance: WatcherDO) => {
-			const res = await testClient(instance.app).signals.$get({ query: { type: 'rss' } });
-			return res.json();
-		});
-		expect(body.signals).toEqual([]);
+		expect(result.signals).toEqual([]);
 	});
 });
 
-describe('GET /signals/:id', () => {
-	it('returns 404 for a non-existent signal id', async () => {
-		const result = await runInDurableObject(stub('unit-404'), async (instance: WatcherDO) => {
-			const res = await testClient(instance.app).signals[':id'].$get({ param: { id: 'does-not-exist' } });
-			return { status: res.status, body: await res.json() };
+describe('getSignal', () => {
+	it('returns null for a non-existent id', async () => {
+		const result = await runInDurableObject(stub('unit-get-null'), async (instance: WatcherDO) => {
+			return instance.getSignal('does-not-exist');
 		});
-		expect(result.status).toBe(404);
-		expect(result.body).toHaveProperty('error', 'Not found');
+		expect(result).toBeNull();
 	});
 });
 
@@ -92,15 +67,17 @@ describe('parseScheduleMs', () => {
 	});
 });
 
-describe('POST /configure', () => {
-	it('stores config and returns it with lastCheckedAt null on first configure', async () => {
-		const body = await runInDurableObject(stub('unit-configure-new'), async (instance: WatcherDO) => {
-			const res = await testClient(instance.app).configure.$post({
-				json: { name: 'my-watcher', type: 'rss', schedule: '30m', config: { url: 'https://example.com/feed' } },
+describe('configure', () => {
+	it('returns stored config with lastCheckedAt null on first configure', async () => {
+		const result = await runInDurableObject(stub('unit-configure-new'), async (instance: WatcherDO) => {
+			return instance.configure({
+				name: 'my-watcher',
+				type: 'rss',
+				schedule: '30m',
+				config: { url: 'https://example.com/feed' },
 			});
-			return res.json();
 		});
-		expect(body).toMatchObject({
+		expect(result).toMatchObject({
 			name: 'my-watcher',
 			type: 'rss',
 			schedule: '30m',
@@ -109,48 +86,37 @@ describe('POST /configure', () => {
 		});
 	});
 
-	it('returns 400 for an invalid schedule string', async () => {
-		const result = await runInDurableObject(stub('unit-configure-bad-schedule'), async (instance: WatcherDO) => {
-			const res = await testClient(instance.app).configure.$post({
-				json: { name: 'bad', type: 'rss', schedule: 'invalid', config: {} },
-			});
-			return { status: res.status };
-		});
-		expect(result.status).toBe(400);
+	it('throws for an invalid schedule string', async () => {
+		await expect(
+			runInDurableObject(stub('unit-configure-bad-schedule'), async (instance: WatcherDO) => {
+				return instance.configure({ name: 'bad', type: 'rss', schedule: 'invalid', config: {} });
+			}),
+		).rejects.toThrow('Invalid schedule');
 	});
 });
 
-describe('POST /trigger', () => {
-	it('returns ok when no config is stored — no-op, no crash', async () => {
+describe('trigger', () => {
+	it('returns { ok: true } when no config is stored — no-op, no crash', async () => {
 		const result = await runInDurableObject(stub('unit-trigger-no-config'), async (instance: WatcherDO) => {
-			const res = await testClient(instance.app).trigger.$post();
-			return { status: res.status, body: await res.json() };
+			return instance.trigger();
 		});
-		expect(result.status).toBe(200);
-		expect(result.body).toEqual({ ok: true });
+		expect(result).toEqual({ ok: true });
 	});
 
-	it('returns ok when the adapter type is not registered — no-op, no crash', async () => {
+	it('returns { ok: true } when the adapter type is not registered — no-op, no crash', async () => {
 		const result = await runInDurableObject(stub('unit-trigger-unknown-adapter'), async (instance: WatcherDO) => {
-			await testClient(instance.app).configure.$post({
-				json: { name: 'w', type: 'unregistered-type', schedule: '30m', config: {} },
-			});
-			const res = await testClient(instance.app).trigger.$post();
-			return { status: res.status, body: await res.json() };
+			await instance.configure({ name: 'w', type: 'unregistered-type', schedule: '30m', config: {} });
+			return instance.trigger();
 		});
-		expect(result.status).toBe(200);
-		expect(result.body).toEqual({ ok: true });
+		expect(result).toEqual({ ok: true });
 	});
 });
 
-describe('DELETE /', () => {
-	// `index` is Hono's testClient convention for the root path `/`
-	it('wipes all signals from the database and removes config from KV', async () => {
-		const result = await runInDurableObject(stub('unit-delete'), async (instance: WatcherDO) => {
-			const res = await testClient(instance.app).index.$delete();
-			return { status: res.status, body: await res.json() };
+describe('teardown', () => {
+	it('returns { ok: true } and can be called on an empty DO', async () => {
+		const result = await runInDurableObject(stub('unit-teardown'), async (instance: WatcherDO) => {
+			return instance.teardown();
 		});
-		expect(result.status).toBe(200);
-		expect(result.body).toEqual({ ok: true });
+		expect(result).toEqual({ ok: true });
 	});
 });

@@ -131,6 +131,19 @@ function instanceId(prefix: string, userId: string | null): string {
 - TypeScript strict mode, target ES2024, no emit (Wrangler handles bundling)
 - `wrangler.jsonc` uses `new_sqlite_classes` migrations — add new DO classes there alongside their bindings
 
+## Workflow guidelines
+
+- **Small, reviewable diffs** — one logical change at a time
+- **Always write tests with every code change** — no code change without a corresponding test
+- **Use Hono `testClient`** for all Hono route tests — ensures full type safety; no manual `.json<T>()` casts or `as` assertions
+- **Use `zValidator`** on every Hono endpoint that accepts a request body — rejects malformed input with 400 before the handler runs
+- **Commit after each code+test pair** — use the `git-commit-creator` subagent after every completed change with its tests
+- **Always use Drizzle ORM** for all Durable Object SQLite interactions — never write raw SQL
+- **Never write migration files by hand** — only modify `src/db/schema.ts` and run `pnpm run migrate:generate` to let drizzle-kit produce the migration output
+
 ## Current state
 
-`src/index.ts` contains the Wrangler scaffold template (`MyDurableObject`). The actual `ConfigDO`, `WatcherDO`, and all adapters still need to be implemented per the checklist in `cloudflare-signal-watcher.md`.
+- `WatcherDO` — fully implemented and tested (28 tests): `GET /signals`, `GET /signals/:id`, `POST /configure`, `DELETE /`, `POST /trigger`, `alarm()` cycle
+- `src/adapters/index.ts` — `Signal` type, `SourceAdapter` interface, empty adapter registry
+- `src/index.ts` — still contains the Wrangler scaffold (`MyDurableObject`); needs replacing
+- `ConfigDO`, Worker HTTP router, and all source adapters still to be implemented
