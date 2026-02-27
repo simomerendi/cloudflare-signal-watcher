@@ -29,6 +29,37 @@ function makeWatcher(overrides: Partial<WatcherInsert> = {}): WatcherInsert {
 	};
 }
 
+describe('createWatcher', () => {
+	it('inserts a row and returns it with createdAt and null lastCheckedAt', async () => {
+		const result = await runInDurableObject(stub('integ-create'), async (instance: ConfigDO) => {
+			return instance.createWatcher({ name: 'my-watcher', type: 'rss', schedule: '1h', config: { url: 'https://example.com/feed' } });
+		});
+		expect(result.name).toBe('my-watcher');
+		expect(result.type).toBe('rss');
+		expect(result.schedule).toBe('1h');
+		expect(result.lastCheckedAt).toBeNull();
+		expect(result.createdAt).toBeTruthy();
+	});
+
+	it('makes the new watcher visible in listWatchers', async () => {
+		const result = await runInDurableObject(stub('integ-create-list'), async (instance: ConfigDO) => {
+			await instance.createWatcher({ name: 'my-watcher', type: 'rss', schedule: '1h', config: {} });
+			return instance.listWatchers();
+		});
+		expect(result.count).toBe(1);
+		expect(result.watchers[0].name).toBe('my-watcher');
+	});
+
+	it('throws when a watcher with the same name already exists', async () => {
+		await expect(
+			runInDurableObject(stub('integ-create-duplicate'), async (instance: ConfigDO) => {
+				await instance.createWatcher({ name: 'my-watcher', type: 'rss', schedule: '1h', config: {} });
+				return instance.createWatcher({ name: 'my-watcher', type: 'rss', schedule: '1h', config: {} });
+			}),
+		).rejects.toThrow('already exists');
+	});
+});
+
 describe('listWatchers', () => {
 	it('returns seeded watchers', async () => {
 		const watcher = makeWatcher({ name: 'my-watcher' });

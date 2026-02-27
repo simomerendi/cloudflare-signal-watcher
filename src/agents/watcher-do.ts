@@ -113,19 +113,21 @@ export class WatcherDO extends DurableObject<Env> {
 	 * Store watcher config and schedule the first alarm.
 	 * Preserves lastCheckedAt on reconfigure so already-seen signals aren't re-fetched.
 	 * Throws if schedule is not a valid "30m" / "2h" / "1d" string.
+	 * Returns { ok, lastCheckedAt } — only the fields relevant to the caller.
+	 * (Returning the full StoredConfig would fail RPC serialization due to config: Record<string, unknown>.)
 	 */
 	async configure(body: {
 		name: string;
 		type: string;
 		schedule: string;
 		config: Record<string, unknown>;
-	}): Promise<StoredConfig> {
+	}): Promise<{ ok: true; lastCheckedAt: string | null }> {
 		const existing = await this.ctx.storage.get<StoredConfig>('config');
 		const stored: StoredConfig = { ...body, lastCheckedAt: existing?.lastCheckedAt ?? null };
 		await this.ctx.storage.put('config', stored);
 		await this.ctx.storage.deleteAlarm();
 		await this.ctx.storage.setAlarm(Date.now() + parseScheduleMs(stored.schedule));
-		return stored;
+		return { ok: true, lastCheckedAt: stored.lastCheckedAt };
 	}
 
 	/**

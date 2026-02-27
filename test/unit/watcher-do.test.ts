@@ -68,7 +68,7 @@ describe('parseScheduleMs', () => {
 });
 
 describe('configure', () => {
-	it('returns stored config with lastCheckedAt null on first configure', async () => {
+	it('returns lastCheckedAt null on first configure', async () => {
 		const result = await runInDurableObject(stub('unit-configure-new'), async (instance: WatcherDO) => {
 			return instance.configure({
 				name: 'my-watcher',
@@ -77,13 +77,8 @@ describe('configure', () => {
 				config: { url: 'https://example.com/feed' },
 			});
 		});
-		expect(result).toMatchObject({
-			name: 'my-watcher',
-			type: 'rss',
-			schedule: '30m',
-			config: { url: 'https://example.com/feed' },
-			lastCheckedAt: null,
-		});
+		expect(result.ok).toBe(true);
+		expect(result.lastCheckedAt).toBeNull();
 	});
 
 	it('throws for an invalid schedule string', async () => {

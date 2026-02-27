@@ -19,8 +19,15 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
 import { eq } from 'drizzle-orm';
 import { watchers } from '../db/schema';
-import type { WatcherRow } from '../db/schema';
+import type { WatcherRow, WatcherInsert } from '../db/schema';
 import migrations from '../../drizzle/migrations';
+
+type WatcherBody = {
+	name: string;
+	type: string;
+	schedule: string;
+	config: Record<string, unknown>;
+};
 
 // WatcherDO instances are named "watcher:{name}" in single-tenant mode.
 function watcherDoName(name: string): string {
@@ -37,6 +44,24 @@ export class ConfigDO extends DurableObject<Env> {
 		ctx.blockConcurrencyWhile(async () => {
 			await migrate(this.db, migrations);
 		});
+	}
+
+	/**
+	 * Create a new watcher. Inserts a row in ConfigDO's DB then calls
+	 * WatcherDO.configure() to start the polling alarm.
+	 * Throws if a watcher with the same name already exists.
+	 */
+	async createWatcher(body: WatcherBody): Promise<WatcherRow> {
+		const existing = this.db.select().from(watchers).where(eq(watchers.name, body.name)).get();
+		if (existing) throw new Error(`Watcher "${body.name}" already exists`);
+
+		const row: WatcherInsert = { name: body.name, type: body.type, schedule: body.schedule, config: body.config };
+		this.db.insert(watchers).values(row).run();
+
+		const stub = this.env.WATCHER_DO.get(this.env.WATCHER_DO.idFromName(watcherDoName(body.name)));
+		await stub.configure(body);
+
+		return this.db.select().from(watchers).where(eq(watchers.name, body.name)).get()!;
 	}
 
 	/** List configured watchers with offset-based pagination. */

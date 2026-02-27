@@ -17,6 +17,17 @@ function stub(name: string) {
 	return env.CONFIG_DO.get(env.CONFIG_DO.idFromName(name));
 }
 
+describe('createWatcher', () => {
+	it('throws when a watcher with the same name already exists', async () => {
+		await expect(
+			runInDurableObject(stub('unit-create-duplicate'), async (instance: ConfigDO) => {
+				await instance.createWatcher({ name: 'my-watcher', type: 'rss', schedule: '1h', config: {} });
+				return instance.createWatcher({ name: 'my-watcher', type: 'rss', schedule: '1h', config: {} });
+			}),
+		).rejects.toThrow('already exists');
+	});
+});
+
 describe('listWatchers', () => {
 	it('returns an empty list when no watchers are configured', async () => {
 		const result = await runInDurableObject(stub('unit-list-empty'), async (instance: ConfigDO) => {
