@@ -17,6 +17,26 @@ function stub(name: string) {
 	return env.CONFIG_DO.get(env.CONFIG_DO.idFromName(name));
 }
 
+describe('deleteWatcher', () => {
+	it('throws when the watcher does not exist', async () => {
+		await expect(
+			runInDurableObject(stub('unit-delete-not-found'), async (instance: ConfigDO) => {
+				return instance.deleteWatcher('no-such-watcher');
+			}),
+		).rejects.toThrow('not found');
+	});
+});
+
+describe('updateWatcher', () => {
+	it('throws when the watcher does not exist', async () => {
+		await expect(
+			runInDurableObject(stub('unit-update-not-found'), async (instance: ConfigDO) => {
+				return instance.updateWatcher('no-such-watcher', { type: 'rss', schedule: '1h', config: {} });
+			}),
+		).rejects.toThrow('not found');
+	});
+});
+
 describe('createWatcher', () => {
 	it('throws when a watcher with the same name already exists', async () => {
 		await expect(

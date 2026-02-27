@@ -29,6 +29,45 @@ function makeWatcher(overrides: Partial<WatcherInsert> = {}): WatcherInsert {
 	};
 }
 
+describe('deleteWatcher', () => {
+	it('removes the watcher row so it no longer appears in listWatchers', async () => {
+		const result = await runInDurableObject(stub('integ-delete'), async (instance: ConfigDO) => {
+			await instance.createWatcher({ name: 'my-watcher', type: 'rss', schedule: '1h', config: {} });
+			await instance.deleteWatcher('my-watcher');
+			return instance.listWatchers();
+		});
+		expect(result.count).toBe(0);
+	});
+
+	it('throws when the watcher does not exist', async () => {
+		await expect(
+			runInDurableObject(stub('integ-delete-not-found'), async (instance: ConfigDO) => {
+				return instance.deleteWatcher('no-such-watcher');
+			}),
+		).rejects.toThrow('not found');
+	});
+});
+
+describe('updateWatcher', () => {
+	it('updates the watcher row and returns the new values', async () => {
+		const result = await runInDurableObject(stub('integ-update'), async (instance: ConfigDO) => {
+			await instance.createWatcher({ name: 'my-watcher', type: 'rss', schedule: '1h', config: {} });
+			return instance.updateWatcher('my-watcher', { type: 'github-releases', schedule: '30m', config: { repos: ['org/repo'] } });
+		});
+		expect(result.type).toBe('github-releases');
+		expect(result.schedule).toBe('30m');
+		expect(result.config).toEqual({ repos: ['org/repo'] });
+	});
+
+	it('throws when the watcher does not exist', async () => {
+		await expect(
+			runInDurableObject(stub('integ-update-not-found'), async (instance: ConfigDO) => {
+				return instance.updateWatcher('no-such-watcher', { type: 'rss', schedule: '1h', config: {} });
+			}),
+		).rejects.toThrow('not found');
+	});
+});
+
 describe('createWatcher', () => {
 	it('inserts a row and returns it with createdAt and null lastCheckedAt', async () => {
 		const result = await runInDurableObject(stub('integ-create'), async (instance: ConfigDO) => {

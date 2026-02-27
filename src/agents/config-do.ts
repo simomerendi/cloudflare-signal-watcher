@@ -64,6 +64,39 @@ export class ConfigDO extends DurableObject<Env> {
 		return this.db.select().from(watchers).where(eq(watchers.name, body.name)).get()!;
 	}
 
+	/**
+	 * Delete a watcher. Calls WatcherDO.teardown() to cancel the alarm and wipe
+	 * its signals, then removes the row from ConfigDO's database.
+	 * Throws if the watcher does not exist.
+	 */
+	async deleteWatcher(name: string): Promise<{ ok: true }> {
+		const existing = this.db.select().from(watchers).where(eq(watchers.name, name)).get();
+		if (!existing) throw new Error(`Watcher "${name}" not found`);
+
+		const stub = this.env.WATCHER_DO.get(this.env.WATCHER_DO.idFromName(watcherDoName(name)));
+		await stub.teardown();
+
+		this.db.delete(watchers).where(eq(watchers.name, name)).run();
+		return { ok: true };
+	}
+
+	/**
+	 * Update an existing watcher's type, schedule, or config.
+	 * Calls WatcherDO.configure() to restart the alarm with the new settings.
+	 * Throws if the watcher does not exist.
+	 */
+	async updateWatcher(name: string, body: { type: string; schedule: string; config: Record<string, unknown> }): Promise<WatcherRow> {
+		const existing = this.db.select().from(watchers).where(eq(watchers.name, name)).get();
+		if (!existing) throw new Error(`Watcher "${name}" not found`);
+
+		this.db.update(watchers).set({ type: body.type, schedule: body.schedule, config: body.config }).where(eq(watchers.name, name)).run();
+
+		const stub = this.env.WATCHER_DO.get(this.env.WATCHER_DO.idFromName(watcherDoName(name)));
+		await stub.configure({ name, ...body });
+
+		return this.db.select().from(watchers).where(eq(watchers.name, name)).get()!;
+	}
+
 	/** List configured watchers with offset-based pagination. */
 	async listWatchers(params: { limit?: number; offset?: number } = {}): Promise<{
 		watchers: WatcherRow[];
