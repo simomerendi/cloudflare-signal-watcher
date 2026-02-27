@@ -2,7 +2,7 @@
 // DO classes must be re-exported from this file so Wrangler can locate them.
 
 export { WatcherDO } from './agents/watcher-do';
-// export { ConfigDO } from './agents/config-do'; // uncomment once ConfigDO is implemented
+export { ConfigDO } from './agents/config-do';
 
 export default {
 	async fetch(_request: Request, _env: Env): Promise<Response> {

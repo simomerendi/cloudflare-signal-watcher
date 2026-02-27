@@ -2,7 +2,7 @@
 
 interface Env {
 	MULTI_TENANT: "false";
-	CONFIG_DO: DurableObjectNamespace /* ConfigDO */;
+	CONFIG_DO: DurableObjectNamespace<import("./src/index").ConfigDO>;
 	WATCHER_DO: DurableObjectNamespace<import("./src/index").WatcherDO>;
 }
 declare module "*.sql" {
