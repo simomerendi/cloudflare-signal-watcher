@@ -81,6 +81,21 @@ describe('DELETE /watchers/:name', () => {
 	});
 });
 
+describe('POST /watchers/:name/trigger', () => {
+	const NAME = 'int-trigger-w1';
+	afterEach(() => cleanup(NAME));
+
+	it('returns 200 with { ok: true }', async () => {
+		await client.watchers.$post(
+			{ json: { name: NAME, type: 'rss', schedule: '1h', config: {} } },
+			{ headers: auth },
+		);
+		const res = await client.watchers[':name'].trigger.$post({ param: { name: NAME } }, { headers: auth });
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ ok: true });
+	});
+});
+
 describe('POST /watchers', () => {
 	const NAME = 'int-post-w1';
 	afterEach(() => cleanup(NAME));

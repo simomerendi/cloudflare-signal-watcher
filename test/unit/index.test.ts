@@ -79,6 +79,13 @@ describe('PUT /watchers/:name', () => {
 	});
 });
 
+describe('POST /watchers/:name/trigger', () => {
+	it('returns 401 without auth', async () => {
+		const res = await client.watchers[':name'].trigger.$post({ param: { name: 'w' } });
+		expect(res.status).toBe(401);
+	});
+});
+
 describe('GET /watchers', () => {
 	it('returns empty list when no watchers are configured', async () => {
 		const res = await client.watchers.$get({}, { headers: auth });

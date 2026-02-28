@@ -124,6 +124,16 @@ export const app = new Hono<HonoCtx>()
 			if (msg.includes('not found')) return c.json({ error: msg }, 404);
 			throw e;
 		}
+	})
+	// Force a single poll cycle on the named watcher (dev/testing only).
+	.post('/watchers/:name/trigger', async (c) => {
+		const { name } = c.req.param();
+		const userId = c.get('userId');
+		const watcherStub = c.env.WATCHER_DO.get(
+			c.env.WATCHER_DO.idFromName(`${instanceId('watcher', userId)}:${name}`),
+		);
+		const result = await watcherStub.trigger();
+		return c.json(result);
 	});
 
 export default app;
