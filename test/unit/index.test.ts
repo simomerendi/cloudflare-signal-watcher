@@ -86,6 +86,13 @@ describe('GET /signals', () => {
 	});
 });
 
+describe('GET /signals/:id', () => {
+	it('returns 401 without auth', async () => {
+		const res = await client.signals[':id'].$get({ param: { id: 'some-id' } });
+		expect(res.status).toBe(401);
+	});
+});
+
 describe('POST /watchers/:name/trigger', () => {
 	it('returns 401 without auth', async () => {
 		const res = await client.watchers[':name'].trigger.$post({ param: { name: 'w' } });

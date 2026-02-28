@@ -158,6 +158,27 @@ export const app = new Hono<HonoCtx>()
 		const page = all.slice(0, limit);
 		return c.json({ signals: page, count: page.length });
 	})
+	// Fan-out to all WatcherDOs and return the first watcher that has the signal.
+	.get('/signals/:id', async (c) => {
+		const { id } = c.req.param();
+		const userId = c.get('userId');
+
+		const configStub = c.env.CONFIG_DO.get(c.env.CONFIG_DO.idFromName(instanceId('config', userId)));
+		const { watchers: watcherList } = await configStub.listWatchers({ limit: 500 });
+
+		const results = await Promise.all(
+			watcherList.map((w) => {
+				const stub = c.env.WATCHER_DO.get(
+					c.env.WATCHER_DO.idFromName(`${instanceId('watcher', userId)}:${w.name}`),
+				);
+				return stub.getSignal(id);
+			}),
+		);
+
+		const signal = results.find((r) => r !== null) ?? null;
+		if (!signal) return c.json({ error: 'Signal not found' }, 404);
+		return c.json(signal);
+	})
 	// Force a single poll cycle on the named watcher (dev/testing only).
 	.post('/watchers/:name/trigger', async (c) => {
 		const { name } = c.req.param();

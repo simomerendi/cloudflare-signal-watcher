@@ -88,6 +88,30 @@ describe('GET /signals', () => {
 	});
 });
 
+describe('GET /signals/:id', () => {
+	const WATCHER = 'int-signal-id-w1';
+	afterEach(() => cleanup(WATCHER));
+
+	it('returns 404 when signal does not exist', async () => {
+		const res = await client.signals[':id'].$get({ param: { id: crypto.randomUUID() } }, { headers: auth });
+		expect(res.status).toBe(404);
+	});
+
+	it('returns the signal by id when it exists', async () => {
+		await client.watchers.$post(
+			{ json: { name: WATCHER, type: 'rss', schedule: '1h', config: {} } },
+			{ headers: auth },
+		);
+		const signal = makeSignal(WATCHER);
+		await seedSignal(WATCHER, signal);
+
+		const res = await client.signals[':id'].$get({ param: { id: signal.id } }, { headers: auth });
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body).toMatchObject({ id: signal.id, title: signal.title });
+	});
+});
+
 describe('PUT /watchers/:name', () => {
 	const NAME = 'int-put-w1';
 	afterEach(() => cleanup(NAME));
