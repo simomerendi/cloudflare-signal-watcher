@@ -19,14 +19,14 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
 import { eq } from 'drizzle-orm';
 import { watchers } from '../db/schema';
-import type { WatcherRow, WatcherInsert } from '../db/schema';
+import type { WatcherRow, WatcherInsert, JsonConfig } from '../db/schema';
 import migrations from '../../drizzle/migrations';
 
 type WatcherBody = {
 	name: string;
 	type: string;
 	schedule: string;
-	config: Record<string, unknown>;
+	config: JsonConfig;
 };
 
 // WatcherDO instances are named "watcher:{name}" in single-tenant mode.
@@ -85,7 +85,7 @@ export class ConfigDO extends DurableObject<Env> {
 	 * Calls WatcherDO.configure() to restart the alarm with the new settings.
 	 * Throws if the watcher does not exist.
 	 */
-	async updateWatcher(name: string, body: { type: string; schedule: string; config: Record<string, unknown> }): Promise<WatcherRow> {
+	async updateWatcher(name: string, body: { type: string; schedule: string; config: JsonConfig }): Promise<WatcherRow> {
 		const existing = this.db.select().from(watchers).where(eq(watchers.name, name)).get();
 		if (!existing) throw new Error(`Watcher "${name}" not found`);
 

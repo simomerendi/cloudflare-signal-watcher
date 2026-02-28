@@ -18,11 +18,21 @@
 import { sql } from 'drizzle-orm';
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
+/**
+ * Finite-depth JSON value types used for `config` and `metadata` columns.
+ *
+ * Deliberately non-recursive so that Rpc.Serializable<T> can fully expand the
+ * type without hitting TypeScript's "type instantiation excessively deep" limit.
+ * Two levels of nesting are sufficient for every adapter config we implement.
+ */
+export type JsonPrimitive = null | boolean | number | string;
+export type JsonConfig = { [k: string]: JsonPrimitive | JsonPrimitive[] | { [k: string]: JsonPrimitive | JsonPrimitive[] } };
+
 export const watchers = sqliteTable('watchers', {
 	name: text('name').primaryKey(),
 	type: text('type').notNull(),
 	schedule: text('schedule').notNull(),
-	config: text('config', { mode: 'json' }).notNull().$type<Record<string, unknown>>(),
+	config: text('config', { mode: 'json' }).notNull().$type<JsonConfig>(),
 	createdAt: text('created_at')
 		.notNull()
 		.default(sql`(datetime('now'))`),
@@ -64,7 +74,7 @@ export const signals = sqliteTable('signals', {
 	detectedAt: text('detected_at')
 		.notNull()
 		.default(sql`(datetime('now'))`),
-	metadata: text('metadata', { mode: 'json' }).notNull().$type<Record<string, unknown>>(),
+	metadata: text('metadata', { mode: 'json' }).notNull().$type<JsonConfig>(),
 });
 
 export type SignalRow = typeof signals.$inferSelect;

@@ -7,6 +7,8 @@
  * a new adapter is a single-line change here.
  */
 
+import type { JsonConfig } from '../db/schema';
+
 // The signal shape that every adapter must return. `detectedAt` is omitted
 // because it is set by WatcherDO at insert time via the SQLite column default.
 export type Signal = {
@@ -17,13 +19,13 @@ export type Signal = {
 	url: string;
 	summary?: string | null;
 	publishedAt?: string | null;
-	metadata: Record<string, unknown>;
+	metadata: JsonConfig;
 };
 
 // Every source adapter implements this interface.
 export interface SourceAdapter {
 	type: string;
-	fetch(config: Record<string, unknown>, lastCheckedAt: string | null, env: Env): Promise<Signal[]>;
+	fetch(config: JsonConfig, lastCheckedAt: string | null, env: Env): Promise<Signal[]>;
 }
 
 // ---------------------------------------------------------------------------

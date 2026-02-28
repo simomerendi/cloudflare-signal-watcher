@@ -1,11 +1,8 @@
 /**
  * Unit tests for the Worker HTTP router.
  *
- * Uses Hono's testClient for full route type safety. Auth middleware tests
- * are in Step 2 (alongside the first protected routes) so they can use the
- * typed client rather than raw app.request() calls.
- *
- * The miniflare binding API_TOKEN = 'test-token' is set in vitest.config.ts.
+ * Uses Hono's testClient for full route type safety. The miniflare binding
+ * API_TOKEN = 'test-token' is set in vitest.config.ts.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -17,6 +14,8 @@ declare module 'cloudflare:test' {
 	interface ProvidedEnv extends Env {}
 }
 
+const TOKEN = 'test-token';
+const auth = { Authorization: `Bearer ${TOKEN}` };
 const client = testClient(app, env);
 
 describe('GET /health', () => {
@@ -24,5 +23,44 @@ describe('GET /health', () => {
 		const res = await client.health.$get();
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ ok: true });
+	});
+});
+
+describe('auth middleware', () => {
+	it('returns 401 when Authorization header is missing', async () => {
+		const res = await client.watchers.$get();
+		expect(res.status).toBe(401);
+		expect(await res.json()).toMatchObject({ error: 'Unauthorized' });
+	});
+
+	it('returns 401 when token does not match', async () => {
+		const res = await client.watchers.$get({}, { headers: { Authorization: 'Bearer wrong-token' } });
+		expect(res.status).toBe(401);
+	});
+
+	it('returns 401 when Authorization header lacks Bearer prefix', async () => {
+		const res = await client.watchers.$get({}, { headers: { Authorization: TOKEN } });
+		expect(res.status).toBe(401);
+	});
+
+	it('passes through with correct Bearer token', async () => {
+		const res = await client.watchers.$get({}, { headers: auth });
+		expect(res.status).not.toBe(401);
+	});
+});
+
+describe('GET /watchers', () => {
+	it('returns empty list when no watchers are configured', async () => {
+		const res = await client.watchers.$get({}, { headers: auth });
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body).toMatchObject({ watchers: [], count: 0 });
+	});
+
+	it('respects limit and offset query params', async () => {
+		const res = await client.watchers.$get({ query: { limit: '10', offset: '5' } }, { headers: auth });
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body).toMatchObject({ limit: 10, offset: 5 });
 	});
 });

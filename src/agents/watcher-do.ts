@@ -22,7 +22,7 @@ import { drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import { signals } from '../db/schema';
-import type { SignalRow } from '../db/schema';
+import type { SignalRow, JsonConfig } from '../db/schema';
 import { adapters } from '../adapters';
 import migrations from '../../drizzle/migrations';
 
@@ -32,7 +32,7 @@ type StoredConfig = {
 	name: string;
 	type: string;
 	schedule: string; // e.g. "30m", "2h", "1d"
-	config: Record<string, unknown>; // adapter-specific options
+	config: JsonConfig; // adapter-specific options
 	lastCheckedAt: string | null; // ISO timestamp; null until first run completes
 };
 
@@ -120,7 +120,7 @@ export class WatcherDO extends DurableObject<Env> {
 		name: string;
 		type: string;
 		schedule: string;
-		config: Record<string, unknown>;
+		config: JsonConfig;
 	}): Promise<{ ok: true; lastCheckedAt: string | null }> {
 		const existing = await this.ctx.storage.get<StoredConfig>('config');
 		const stored: StoredConfig = { ...body, lastCheckedAt: existing?.lastCheckedAt ?? null };

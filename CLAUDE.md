@@ -10,7 +10,7 @@ pnpm run deploy     # Deploy to Cloudflare Workers
 pnpm run cf-typegen # Regenerate Env type definitions from wrangler.jsonc bindings
 ```
 
-There are no tests yet. Use `POST /watchers/:name/trigger` (once implemented) to manually trigger a check during development.
+Run tests with `pnpm test`. Use `POST /watchers/:name/trigger` to manually trigger a check during development.
 
 ## Architecture
 
@@ -32,22 +32,25 @@ Worker (HTTP router — src/index.ts)
         └─ scheduleEvery() polling loop
 ```
 
-### Planned source layout (not yet implemented)
+### Source layout
 
 ```
 src/
   adapters/          # One file per source type, each implementing SourceAdapter
-    github-releases.ts
-    rss.ts
-    hn-keyword.ts
-    newsapi.ts
-    polygon.ts
-    sec-edgar.ts
-    yahoo-finance.ts
+    index.ts         # Signal type, SourceAdapter interface, adapter registry (empty)
+    github-releases.ts  # (not yet implemented)
+    rss.ts              # (not yet implemented)
+    hn-keyword.ts       # (not yet implemented)
+    newsapi.ts          # (not yet implemented)
+    polygon.ts          # (not yet implemented)
+    sec-edgar.ts        # (not yet implemented)
+    yahoo-finance.ts    # (not yet implemented)
   agents/
-    config-do.ts     # ConfigDO class
-    watcher-do.ts    # WatcherDO class
-  index.ts           # Worker entry point + HTTP router
+    config-do.ts     # ConfigDO — watcher CRUD, calls WatcherDO via RPC
+    watcher-do.ts    # WatcherDO — signal storage, polling alarm, RPC methods
+  db/
+    schema.ts        # Drizzle schema: watchers + signals tables
+  index.ts           # Worker entry point + HTTP router (stub — needs implementing)
 ```
 
 ### SourceAdapter interface
@@ -119,10 +122,10 @@ function instanceId(prefix: string, userId: string | null): string {
 
 ## Tech stack
 
-- **HTTP framework**: Hono (routing in Worker entry point and Durable Objects)
+- **HTTP framework**: Hono (Worker router only — DOs use RPC, not internal HTTP routing)
 - **ORM + migrations**: Drizzle ORM
-- **Unit tests**: Vitest with Hono's `testClient`
-- **Integration tests**: End-to-end integration tests (separate from unit tests)
+- **Unit tests**: Vitest (`pnpm test`) — call DO RPC methods directly via `runInDurableObject`
+- **Integration tests**: same file structure, seeds real data and tests full method behaviour
 
 ## Code style
 
@@ -135,15 +138,20 @@ function instanceId(prefix: string, userId: string | null): string {
 
 - **Small, reviewable diffs** — one logical change at a time
 - **Always write tests with every code change** — no code change without a corresponding test
-- **Use Hono `testClient`** for all Hono route tests — ensures full type safety; no manual `.json<T>()` casts or `as` assertions
-- **Use `zValidator`** on every Hono endpoint that accepts a request body — rejects malformed input with 400 before the handler runs
+- **DOs use RPC methods** — public async methods on the class, called via typed stub; no internal Hono routing inside DOs
+- **Worker router uses Hono** — `zValidator` on every endpoint that accepts a body; `testClient` for route tests
 - **Commit after each code+test pair** — use the `git-commit-creator` subagent after every completed change with its tests
 - **Always use Drizzle ORM** for all Durable Object SQLite interactions — never write raw SQL
 - **Never write migration files by hand** — only modify `src/db/schema.ts` and run `pnpm run migrate:generate` to let drizzle-kit produce the migration output
 
+### RPC serialization note
+DO RPC methods must return fully serializable types. Avoid `Record<string, unknown>` in return types — `unknown` fails `Rpc.Serializable` and collapses the return type to `never`. Return only the fields callers actually need, using concrete types (`string`, `number`, `boolean`, `null`, plain objects with known-typed values).
+
 ## Current state
 
-- `WatcherDO` — fully implemented and tested (28 tests): `GET /signals`, `GET /signals/:id`, `POST /configure`, `DELETE /`, `POST /trigger`, `alarm()` cycle
+- `WatcherDO` (`src/agents/watcher-do.ts`) — fully implemented, 26 tests: RPC methods `getSignals()`, `getSignal()`, `configure()`, `teardown()`, `trigger()`, `alarm()` cycle
+- `ConfigDO` (`src/agents/config-do.ts`) — fully implemented, 16 tests: RPC methods `listWatchers()`, `createWatcher()`, `updateWatcher()`, `deleteWatcher()`
 - `src/adapters/index.ts` — `Signal` type, `SourceAdapter` interface, empty adapter registry
-- `src/index.ts` — still contains the Wrangler scaffold (`MyDurableObject`); needs replacing
-- `ConfigDO`, Worker HTTP router, and all source adapters still to be implemented
+- `src/index.ts` — exports both DO classes; Worker fetch handler is a stub returning 501
+- **Next**: Worker HTTP router (Task 7) — Hono app with auth middleware, routes to ConfigDO and WatcherDO via RPC
+- **Then**: Source adapters (Tasks 8–14): `rss`, `github-releases`, `hn-keyword`, `sec-edgar`, `newsapi`, `yahoo-finance`, `polygon`
