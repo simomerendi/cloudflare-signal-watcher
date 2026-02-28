@@ -7,9 +7,12 @@
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { env } from 'cloudflare:test';
+import { env, runInDurableObject } from 'cloudflare:test';
 import { testClient } from 'hono/testing';
 import { app } from '../../src/index';
+import type { WatcherDO } from '../../src/agents/watcher-do';
+import { signals } from '../../src/db/schema';
+import type { SignalInsert } from '../../src/db/schema';
 
 declare module 'cloudflare:test' {
 	interface ProvidedEnv extends Env {}
@@ -23,6 +26,67 @@ const client = testClient(app, env);
 async function cleanup(name: string) {
 	await client.watchers[':name'].$delete({ param: { name } }, { headers: auth });
 }
+
+// Helper to seed a signal directly into a WatcherDO's SQLite database.
+function makeSignal(watcherName: string, overrides: Partial<SignalInsert> = {}): SignalInsert {
+	return {
+		id: crypto.randomUUID(),
+		watcherName,
+		sourceType: 'rss',
+		title: 'Test Signal',
+		url: 'https://example.com',
+		metadata: {},
+		detectedAt: new Date().toISOString(),
+		...overrides,
+	};
+}
+
+async function seedSignal(watcherName: string, signal: SignalInsert) {
+	const doStub = env.WATCHER_DO.get(env.WATCHER_DO.idFromName(`watcher:${watcherName}`));
+	await runInDurableObject(doStub, async (instance: WatcherDO) => {
+		instance.db.insert(signals).values(signal).run();
+	});
+}
+
+describe('GET /signals', () => {
+	const WATCHER = 'int-signals-w1';
+	afterEach(() => cleanup(WATCHER));
+
+	it('returns empty list when no watchers are configured', async () => {
+		const res = await client.signals.$get({}, { headers: auth });
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body).toMatchObject({ signals: [], count: 0 });
+	});
+
+	it('returns signals seeded into a watcher DO', async () => {
+		await client.watchers.$post(
+			{ json: { name: WATCHER, type: 'rss', schedule: '1h', config: {} } },
+			{ headers: auth },
+		);
+		const signal = makeSignal(WATCHER, { title: 'Hello Signal' });
+		await seedSignal(WATCHER, signal);
+
+		const res = await client.signals.$get({}, { headers: auth });
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body.signals.some((s: { id: string }) => s.id === signal.id)).toBe(true);
+	});
+
+	it('filters by ?watcher= param', async () => {
+		await client.watchers.$post(
+			{ json: { name: WATCHER, type: 'rss', schedule: '1h', config: {} } },
+			{ headers: auth },
+		);
+		const signal = makeSignal(WATCHER);
+		await seedSignal(WATCHER, signal);
+
+		const res = await client.signals.$get({ query: { watcher: WATCHER } }, { headers: auth });
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body.signals.some((s: { id: string }) => s.id === signal.id)).toBe(true);
+	});
+});
 
 describe('PUT /watchers/:name', () => {
 	const NAME = 'int-put-w1';

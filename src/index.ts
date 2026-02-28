@@ -125,6 +125,39 @@ export const app = new Hono<HonoCtx>()
 			throw e;
 		}
 	})
+	// ---------- Signal routes (read from WatcherDOs via RPC) ----------
+	// Fan-out: when no ?watcher= filter is given, query every WatcherDO in parallel and
+	// merge the results. Results are sorted by detectedAt descending and capped at limit.
+	.get('/signals', async (c) => {
+		const since = c.req.query('since') ?? null;
+		const watcherFilter = c.req.query('watcher') ?? null;
+		const type = c.req.query('type') ?? null;
+		const limit = Number(c.req.query('limit') ?? '50');
+		const userId = c.get('userId');
+
+		if (watcherFilter) {
+			const stub = c.env.WATCHER_DO.get(
+				c.env.WATCHER_DO.idFromName(`${instanceId('watcher', userId)}:${watcherFilter}`),
+			);
+			return c.json(await stub.getSignals({ since, limit, type }));
+		}
+
+		const configStub = c.env.CONFIG_DO.get(c.env.CONFIG_DO.idFromName(instanceId('config', userId)));
+		const { watchers: watcherList } = await configStub.listWatchers({ limit: 500 });
+
+		const results = await Promise.all(
+			watcherList.map((w) => {
+				const stub = c.env.WATCHER_DO.get(
+					c.env.WATCHER_DO.idFromName(`${instanceId('watcher', userId)}:${w.name}`),
+				);
+				return stub.getSignals({ since, limit, type });
+			}),
+		);
+
+		const all = results.flatMap((r) => r.signals).sort((a, b) => b.detectedAt.localeCompare(a.detectedAt));
+		const page = all.slice(0, limit);
+		return c.json({ signals: page, count: page.length });
+	})
 	// Force a single poll cycle on the named watcher (dev/testing only).
 	.post('/watchers/:name/trigger', async (c) => {
 		const { name } = c.req.param();
