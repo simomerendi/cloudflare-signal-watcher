@@ -43,6 +43,12 @@ const watcherBodySchema = z.object({
 	config: jsonConfigSchema,
 });
 
+const updateWatcherBodySchema = z.object({
+	type: z.string().min(1),
+	schedule: z.string().min(1),
+	config: jsonConfigSchema,
+});
+
 // Health check is registered first so the auth middleware does not run for it.
 // Routes are chained so the app type carries full route schemas for testClient inference.
 export const app = new Hono<HonoCtx>()
@@ -89,6 +95,33 @@ export const app = new Hono<HonoCtx>()
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
 			if (msg.includes('already exists')) return c.json({ error: msg }, 409);
+			throw e;
+		}
+	})
+	.put('/watchers/:name', zValidator('json', updateWatcherBodySchema), async (c) => {
+		const { name } = c.req.param();
+		const body = c.req.valid('json');
+		const userId = c.get('userId');
+		const stub = c.env.CONFIG_DO.get(c.env.CONFIG_DO.idFromName(instanceId('config', userId)));
+		try {
+			const watcher = await stub.updateWatcher(name, body);
+			return c.json(watcher);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			if (msg.includes('not found')) return c.json({ error: msg }, 404);
+			throw e;
+		}
+	})
+	.delete('/watchers/:name', async (c) => {
+		const { name } = c.req.param();
+		const userId = c.get('userId');
+		const stub = c.env.CONFIG_DO.get(c.env.CONFIG_DO.idFromName(instanceId('config', userId)));
+		try {
+			const result = await stub.deleteWatcher(name);
+			return c.json(result);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			if (msg.includes('not found')) return c.json({ error: msg }, 404);
 			throw e;
 		}
 	});

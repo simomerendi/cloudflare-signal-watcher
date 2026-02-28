@@ -24,6 +24,63 @@ async function cleanup(name: string) {
 	await client.watchers[':name'].$delete({ param: { name } }, { headers: auth });
 }
 
+describe('PUT /watchers/:name', () => {
+	const NAME = 'int-put-w1';
+	afterEach(() => cleanup(NAME));
+
+	it('returns 404 when watcher does not exist', async () => {
+		const res = await client.watchers[':name'].$put(
+			{ param: { name: NAME }, json: { type: 'rss', schedule: '1h', config: {} } },
+			{ headers: auth },
+		);
+		expect(res.status).toBe(404);
+	});
+
+	it('updates an existing watcher and returns 200 with the updated row', async () => {
+		await client.watchers.$post(
+			{ json: { name: NAME, type: 'rss', schedule: '1h', config: { feed: 'https://example.com/rss' } } },
+			{ headers: auth },
+		);
+		const res = await client.watchers[':name'].$put(
+			{ param: { name: NAME }, json: { type: 'rss', schedule: '2h', config: { feed: 'https://example.com/rss2' } } },
+			{ headers: auth },
+		);
+		expect(res.status).toBe(200);
+		const body = await res.json();
+		expect(body).toMatchObject({ name: NAME, type: 'rss', schedule: '2h' });
+	});
+});
+
+describe('DELETE /watchers/:name', () => {
+	const NAME = 'int-del-w1';
+
+	it('returns 404 when watcher does not exist', async () => {
+		const res = await client.watchers[':name'].$delete({ param: { name: NAME } }, { headers: auth });
+		expect(res.status).toBe(404);
+	});
+
+	it('deletes a watcher and returns 200 with { ok: true }', async () => {
+		await client.watchers.$post(
+			{ json: { name: NAME, type: 'rss', schedule: '1h', config: {} } },
+			{ headers: auth },
+		);
+		const res = await client.watchers[':name'].$delete({ param: { name: NAME } }, { headers: auth });
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ ok: true });
+	});
+
+	it('watcher is gone from GET /watchers after delete', async () => {
+		await client.watchers.$post(
+			{ json: { name: NAME, type: 'rss', schedule: '1h', config: {} } },
+			{ headers: auth },
+		);
+		await client.watchers[':name'].$delete({ param: { name: NAME } }, { headers: auth });
+		const res = await client.watchers.$get({}, { headers: auth });
+		const body = await res.json();
+		expect(body.watchers.some((w: { name: string }) => w.name === NAME)).toBe(false);
+	});
+});
+
 describe('POST /watchers', () => {
 	const NAME = 'int-post-w1';
 	afterEach(() => cleanup(NAME));
