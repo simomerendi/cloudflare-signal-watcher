@@ -15,6 +15,8 @@
 
 import { Hono } from 'hono';
 import { verify } from 'hono/jwt';
+import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 
 export { WatcherDO } from './agents/watcher-do';
 export { ConfigDO } from './agents/config-do';
@@ -25,6 +27,21 @@ function instanceId(prefix: string, userId: string | null): string {
 }
 
 type HonoCtx = { Bindings: Env; Variables: { userId: string | null } };
+
+// Zod schema for JsonConfig — mirrors the finite-depth type in db/schema.ts so that
+// the inferred type is assignable to JsonConfig without a cast.
+const jsonPrimitive = z.union([z.null(), z.boolean(), z.number(), z.string()]);
+const jsonConfigSchema = z.record(
+	z.string(),
+	z.union([jsonPrimitive, z.array(jsonPrimitive), z.record(z.string(), z.union([jsonPrimitive, z.array(jsonPrimitive)]))]),
+);
+
+const watcherBodySchema = z.object({
+	name: z.string().min(1),
+	type: z.string().min(1),
+	schedule: z.string().min(1),
+	config: jsonConfigSchema,
+});
 
 // Health check is registered first so the auth middleware does not run for it.
 // Routes are chained so the app type carries full route schemas for testClient inference.
@@ -61,6 +78,19 @@ export const app = new Hono<HonoCtx>()
 		const stub = c.env.CONFIG_DO.get(c.env.CONFIG_DO.idFromName(instanceId('config', userId)));
 		const result = await stub.listWatchers({ limit, offset });
 		return c.json(result);
+	})
+	.post('/watchers', zValidator('json', watcherBodySchema), async (c) => {
+		const body = c.req.valid('json');
+		const userId = c.get('userId');
+		const stub = c.env.CONFIG_DO.get(c.env.CONFIG_DO.idFromName(instanceId('config', userId)));
+		try {
+			const watcher = await stub.createWatcher(body);
+			return c.json(watcher, 201);
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			if (msg.includes('already exists')) return c.json({ error: msg }, 409);
+			throw e;
+		}
 	});
 
 export default app;
