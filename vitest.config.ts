@@ -10,6 +10,11 @@ export default defineWorkersConfig({
 				// and throws when it sees the WAL side-cars. Disabling isolatedStorage is safe here
 				// because every test already uses a unique DO stub name, so no state bleeds between tests.
 				isolatedStorage: false,
+				miniflare: {
+					// API_TOKEN is a secret (not in wrangler.jsonc). Provide a test value so the
+					// router's auth middleware has something to compare against in tests.
+					bindings: { API_TOKEN: 'test-token' },
+				},
 			},
 		},
 	},
