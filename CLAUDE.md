@@ -50,7 +50,7 @@ src/
     watcher-do.ts    # WatcherDO — signal storage, polling alarm, RPC methods
   db/
     schema.ts        # Drizzle schema: watchers + signals tables
-  index.ts           # Worker entry point + HTTP router (stub — needs implementing)
+  index.ts           # Worker entry point + Hono HTTP router
 ```
 
 ### SourceAdapter interface
@@ -58,7 +58,7 @@ src/
 ```typescript
 interface SourceAdapter {
   type: string
-  fetch(config: unknown, lastCheckedAt: string): Promise<Signal[]>
+  fetch(config: JsonConfig, lastCheckedAt: string | null, env: Env): Promise<Signal[]>
 }
 ```
 
@@ -74,7 +74,7 @@ type Signal = {
   summary?: string
   publishedAt?: string     // ISO timestamp from source
   detectedAt: string       // ISO timestamp when first seen
-  metadata: Record<string, unknown>  // source-specific fields
+  metadata: JsonConfig     // source-specific fields (finite-depth JSON, satisfies Rpc.Serializable)
 }
 ```
 
@@ -149,9 +149,19 @@ DO RPC methods must return fully serializable types. Avoid `Record<string, unkno
 
 ## Current state
 
-- `WatcherDO` (`src/agents/watcher-do.ts`) — fully implemented, 26 tests: RPC methods `getSignals()`, `getSignal()`, `configure()`, `teardown()`, `trigger()`, `alarm()` cycle
-- `ConfigDO` (`src/agents/config-do.ts`) — fully implemented, 16 tests: RPC methods `listWatchers()`, `createWatcher()`, `updateWatcher()`, `deleteWatcher()`
+- `WatcherDO` (`src/agents/watcher-do.ts`) — fully implemented, 26 tests
+- `ConfigDO` (`src/agents/config-do.ts`) — fully implemented, 16 tests
 - `src/adapters/index.ts` — `Signal` type, `SourceAdapter` interface, empty adapter registry
-- `src/index.ts` — exports both DO classes; Worker fetch handler is a stub returning 501
-- **Next**: Worker HTTP router (Task 7) — Hono app with auth middleware, routes to ConfigDO and WatcherDO via RPC
-- **Then**: Source adapters (Tasks 8–14): `rss`, `github-releases`, `hn-keyword`, `sec-edgar`, `newsapi`, `yahoo-finance`, `polygon`
+- `src/index.ts` — Hono router, **fully implemented** (70 tests passing):
+  - ✅ `GET /health`, auth middleware (single + multi-tenant)
+  - ✅ `GET /watchers`, `POST /watchers`, `PUT /watchers/:name`, `DELETE /watchers/:name`
+  - ✅ `GET /signals`, `GET /signals/:id`, `POST /watchers/:name/trigger`
+- **Next**: Source adapters (Tasks 8–14): `rss`, `github-releases`, `hn-keyword`, `sec-edgar`, `newsapi`, `yahoo-finance`, `polygon`
+
+### `JsonConfig` type note
+`config` and `metadata` columns use a finite-depth type (not recursive `JsonValue`) to satisfy `Rpc.Serializable`:
+```ts
+export type JsonPrimitive = null | boolean | number | string;
+export type JsonConfig = { [k: string]: JsonPrimitive | JsonPrimitive[] | { [k: string]: JsonPrimitive | JsonPrimitive[] } };
+```
+The matching Zod schema (`jsonConfigSchema` in `src/index.ts`) mirrors this structure exactly. `drizzle-zod` cannot be used for this — it generates `Buffer` types for text columns under Zod v4.
