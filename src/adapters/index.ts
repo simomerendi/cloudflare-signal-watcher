@@ -25,7 +25,7 @@ export type Signal = {
 // Every source adapter implements this interface.
 export interface SourceAdapter {
 	type: string;
-	fetch(config: JsonConfig, lastCheckedAt: string | null, env: Env): Promise<Signal[]>;
+	fetch(config: JsonConfig, lastCheckedAt: string | null, env: Env, watcherName: string): Promise<Signal[]>;
 }
 
 // ---------------------------------------------------------------------------

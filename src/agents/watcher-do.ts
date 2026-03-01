@@ -50,7 +50,7 @@ async function runCheck(db: ReturnType<typeof drizzle>, storage: DurableObjectSt
 	const adapter = adapters.get(stored.type);
 	if (!adapter) return;
 
-	const fetched = await adapter.fetch(stored.config, stored.lastCheckedAt, env);
+	const fetched = await adapter.fetch(stored.config, stored.lastCheckedAt, env, stored.name);
 	if (fetched.length > 0) {
 		db.insert(signals).values(fetched).onConflictDoNothing().run();
 	}
