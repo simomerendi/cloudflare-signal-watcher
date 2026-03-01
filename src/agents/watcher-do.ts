@@ -51,8 +51,10 @@ async function runCheck(db: ReturnType<typeof drizzle>, storage: DurableObjectSt
 	if (!adapter) return;
 
 	const fetched = await adapter.fetch(stored.config, stored.lastCheckedAt, env, stored.name);
-	if (fetched.length > 0) {
-		db.insert(signals).values(fetched).onConflictDoNothing().run();
+	// Insert in chunks to stay within SQLite's per-statement variable limit.
+	const CHUNK = 50;
+	for (let i = 0; i < fetched.length; i += CHUNK) {
+		db.insert(signals).values(fetched.slice(i, i + CHUNK)).onConflictDoNothing().run();
 	}
 
 	const updated: StoredConfig = { ...stored, lastCheckedAt: new Date().toISOString() };
