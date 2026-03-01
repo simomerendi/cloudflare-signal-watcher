@@ -8,6 +8,7 @@
  */
 
 import type { JsonConfig } from '../db/schema';
+import { rssAdapter } from './rss';
 
 // The signal shape that every adapter must return. `detectedAt` is omitted
 // because it is set by WatcherDO at insert time via the SQLite column default.
@@ -32,6 +33,6 @@ export interface SourceAdapter {
 // Registry — add one line here as each adapter is implemented
 // ---------------------------------------------------------------------------
 
-export const adapters = new Map<string, SourceAdapter>(
-	// e.g. [githubReleasesAdapter.type, githubReleasesAdapter]
-);
+export const adapters = new Map<string, SourceAdapter>([
+	[rssAdapter.type, rssAdapter],
+]);
