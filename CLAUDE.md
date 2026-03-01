@@ -156,10 +156,10 @@ DO RPC methods must return fully serializable types. Avoid `Record<string, unkno
   - ✅ `GET /health`, auth middleware (single + multi-tenant)
   - ✅ `GET /watchers`, `POST /watchers`, `PUT /watchers/:name`, `DELETE /watchers/:name`
   - ✅ `GET /signals`, `GET /signals/:id`, `POST /watchers/:name/trigger`
-- **Next**: Task 8 — `rss` adapter
-- **Then**: Task 9 — MCP server (separate Worker, exposes all endpoints as MCP tools via Service Binding; simple KV bearer token auth for immediate use with Claude Code)
-- **Then**: Task 10 — TanStack Start UI + Better Auth on D1 (proper SaaS auth; Better Auth exposes OAuth 2.0 so Claude Code can authenticate via full browser flow — no manual token copying)
-- **Then**: Task 11 — wire Better Auth into MCP Worker (replace KV lookup with Better Auth Service Binding)
+- `src/adapters/rss.ts` — **fully implemented**, 20 tests; inserts one row at a time to avoid DO SQLite variable limit
+- **Next**: Task 9 — CLI tool (separate project/directory); thin wrapper over the HTTP API; config via env vars (`SIGNAL_WATCHER_URL`, `SIGNAL_WATCHER_TOKEN`)
+- **Then**: Task 10 — TanStack Start UI + Better Auth on D1
+- **Then**: Task 11 — wire Better Auth into CLI/MCP auth
 - **Then**: Tasks 12–16 — remaining adapters: `github-releases`, `hn-keyword`, `sec-edgar`, `newsapi`, `yahoo-finance`, `polygon`
 
 ### `JsonConfig` type note
