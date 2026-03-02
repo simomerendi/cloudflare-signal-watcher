@@ -73,7 +73,7 @@ export const signals = sqliteTable('signals', {
 	publishedAt: text('published_at'),
 	detectedAt: text('detected_at')
 		.notNull()
-		.default(sql`(datetime('now'))`),
+		.$defaultFn(() => new Date().toISOString()),
 	metadata: text('metadata', { mode: 'json' }).notNull().$type<JsonConfig>(),
 });
 
