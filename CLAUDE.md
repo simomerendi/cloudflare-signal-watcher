@@ -157,8 +157,9 @@ DO RPC methods must return fully serializable types. Avoid `Record<string, unkno
   - ✅ `GET /watchers`, `POST /watchers`, `PUT /watchers/:name`, `DELETE /watchers/:name`
   - ✅ `GET /signals`, `GET /signals/:id`, `POST /watchers/:name/trigger`
 - `src/adapters/rss.ts` — **fully implemented**, 20 tests; inserts one row at a time to avoid DO SQLite variable limit
-- **Next**: Task 9 — CLI tool (separate project/directory); thin wrapper over the HTTP API; config via env vars (`SIGNAL_WATCHER_URL`, `SIGNAL_WATCHER_TOKEN`)
-- **Then**: Task 10 — TanStack Start UI + Better Auth on D1
+- `src/db/schema.ts` — `detectedAt` uses `.$defaultFn(() => new Date().toISOString())` (JS-side default, not SQL-level); ensures ISO 8601 format
+- **Task 9 — CLI tool** (`signal-watcher-cli`, sibling repo) — ✅ complete, deployed and tested end-to-end (20 tests)
+- **Next**: Task 10 — Astro + React islands UI + Better Auth on D1 (separate package)
 - **Then**: Task 11 — wire Better Auth into CLI/MCP auth
 - **Then**: Tasks 12–16 — remaining adapters: `github-releases`, `hn-keyword`, `sec-edgar`, `newsapi`, `yahoo-finance`, `polygon`
 
