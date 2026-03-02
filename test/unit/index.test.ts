@@ -65,11 +65,6 @@ describe('POST /watchers', () => {
 });
 
 describe('PUT /watchers/:name', () => {
-	it('returns 400 when required fields are missing', async () => {
-		const res = await client.watchers[':name'].$put({ param: { name: 'w' }, json: { type: 'rss' } as never }, { headers: auth });
-		expect(res.status).toBe(400);
-	});
-
 	it('returns 400 when type is empty string', async () => {
 		const res = await client.watchers[':name'].$put(
 			{ param: { name: 'w' }, json: { type: '', schedule: '1h', config: {} } as never },

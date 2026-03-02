@@ -85,14 +85,20 @@ export class ConfigDO extends DurableObject<Env> {
 	 * Calls WatcherDO.configure() to restart the alarm with the new settings.
 	 * Throws if the watcher does not exist.
 	 */
-	async updateWatcher(name: string, body: { type: string; schedule: string; config: JsonConfig }): Promise<WatcherRow> {
+	async updateWatcher(name: string, body: { type?: string; schedule?: string; config?: JsonConfig }): Promise<WatcherRow> {
 		const existing = this.db.select().from(watchers).where(eq(watchers.name, name)).get();
 		if (!existing) throw new Error(`Watcher "${name}" not found`);
 
-		this.db.update(watchers).set({ type: body.type, schedule: body.schedule, config: body.config }).where(eq(watchers.name, name)).run();
+		const merged = {
+			type: body.type ?? existing.type,
+			schedule: body.schedule ?? existing.schedule,
+			config: body.config ?? existing.config,
+		};
+
+		this.db.update(watchers).set(merged).where(eq(watchers.name, name)).run();
 
 		const stub = this.env.WATCHER_DO.get(this.env.WATCHER_DO.idFromName(watcherDoName(name)));
-		await stub.configure({ name, ...body });
+		await stub.configure({ name, ...merged });
 
 		return this.db.select().from(watchers).where(eq(watchers.name, name)).get()!;
 	}

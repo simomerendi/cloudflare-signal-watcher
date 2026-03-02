@@ -59,6 +59,16 @@ describe('updateWatcher', () => {
 		expect(result.config).toEqual({ repos: ['org/repo'] });
 	});
 
+	it('merges partial fields, preserving omitted values', async () => {
+		const result = await runInDurableObject(stub('integ-update-partial'), async (instance: ConfigDO) => {
+			await instance.createWatcher({ name: 'my-watcher', type: 'rss', schedule: '1h', config: { feed: 'https://example.com' } });
+			return instance.updateWatcher('my-watcher', { schedule: '30m' });
+		});
+		expect(result.type).toBe('rss');
+		expect(result.schedule).toBe('30m');
+		expect(result.config).toEqual({ feed: 'https://example.com' });
+	});
+
 	it('throws when the watcher does not exist', async () => {
 		await expect(
 			runInDurableObject(stub('integ-update-not-found'), async (instance: ConfigDO) => {

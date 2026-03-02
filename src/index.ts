@@ -44,9 +44,9 @@ const watcherBodySchema = z.object({
 });
 
 const updateWatcherBodySchema = z.object({
-	type: z.string().min(1),
-	schedule: z.string().min(1),
-	config: jsonConfigSchema,
+	type: z.string().min(1).optional(),
+	schedule: z.string().min(1).optional(),
+	config: jsonConfigSchema.optional(),
 });
 
 // Health check is registered first so the auth middleware does not run for it.
