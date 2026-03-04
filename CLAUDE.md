@@ -37,9 +37,9 @@ Worker (HTTP router — src/index.ts)
 ```
 src/
   adapters/          # One file per source type, each implementing SourceAdapter
-    index.ts         # Signal type, SourceAdapter interface, adapter registry (empty)
+    index.ts         # Signal type, SourceAdapter interface, adapter registry
+    rss.ts              # ✅ implemented
     github-releases.ts  # (not yet implemented)
-    rss.ts              # (not yet implemented)
     hn-keyword.ts       # (not yet implemented)
     newsapi.ts          # (not yet implemented)
     polygon.ts          # (not yet implemented)
@@ -158,10 +158,20 @@ DO RPC methods must return fully serializable types. Avoid `Record<string, unkno
   - ✅ `GET /signals`, `GET /signals/:id`, `POST /watchers/:name/trigger`
 - `src/adapters/rss.ts` — **fully implemented**, 20 tests; inserts one row at a time to avoid DO SQLite variable limit
 - `src/db/schema.ts` — `detectedAt` uses `.$defaultFn(() => new Date().toISOString())` (JS-side default, not SQL-level); ensures ISO 8601 format
-- **Task 9 — CLI tool** (`signal-watcher-cli`, sibling repo) — ✅ complete, deployed and tested end-to-end (20 tests)
-- **Next**: Task 10 — Astro + React islands UI + Better Auth on D1 (separate package)
-- **Then**: Task 11 — wire Better Auth into CLI/MCP auth
+- **CLI tool** (`signal-watcher-cli`, sibling repo) — ✅ complete + refactored, end-to-end tested (31 tests):
+  - `swatcher health` — `GET /health` check (no auth)
+  - `swatcher watchers list` — `padEnd` alignment, `--json`, `--limit`/`--offset`
+  - `swatcher signals list` — `--json`, `--limit` parsed as number
+  - `src/types.ts` — shared `Watcher` + `Signal` interfaces
+- **Task 10** — Astro + React islands UI + Better Auth on D1 — ✅ complete, tested end-to-end locally
+  - `signal-watcher-ui/` (single-tenant, open-source) at `/home/simo/Coding/MultiCloudAgentEngine/signal-watcher-ui/`
+  - `signal-watcher-ui-pro/` (multi-tenant, per-user JWT proxy) at `/home/simo/Coding/MultiCloudAgentEngine/signal-watcher-ui-pro/`
+  - Both: 13 tests, `pnpm run build` clean, `pnpm run dev` verified (sign-up, sign-in, logout, API key create/list/revoke, signal feed)
+- **Next**: Task 11 — wire Better Auth into CLI/MCP auth (AuthEntrypoint service binding)
 - **Then**: Tasks 12–16 — remaining adapters: `github-releases`, `hn-keyword`, `sec-edgar`, `newsapi`, `yahoo-finance`, `polygon`
+
+### RSS adapter config key
+The RSS adapter reads `config.feed` (not `config.url`). Always create RSS watchers with `--config '{"feed":"https://..."}'`.
 
 ### `JsonConfig` type note
 `config` and `metadata` columns use a finite-depth type (not recursive `JsonValue`) to satisfy `Rpc.Serializable`:
