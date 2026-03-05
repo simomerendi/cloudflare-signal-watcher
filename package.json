@@ -1,7 +1,9 @@
 {
 	"name": "cloudflare-signal-watcher",
 	"version": "0.0.0",
-	"private": true,
+	"description": "Always-on configurable signal watcher built on Cloudflare Durable Objects",
+	"repository": { "type": "git", "url": "https://github.com/simomerendi/cloudflare-signal-watcher" },
+	"license": "MIT",
 	"scripts": {
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",

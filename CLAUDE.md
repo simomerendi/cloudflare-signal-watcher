@@ -147,37 +147,6 @@ function instanceId(prefix: string, userId: string | null): string {
 ### RPC serialization note
 DO RPC methods must return fully serializable types. Avoid `Record<string, unknown>` in return types — `unknown` fails `Rpc.Serializable` and collapses the return type to `never`. Return only the fields callers actually need, using concrete types (`string`, `number`, `boolean`, `null`, plain objects with known-typed values).
 
-## Current state
-
-- `WatcherDO` (`src/agents/watcher-do.ts`) — fully implemented, 26 tests
-- `ConfigDO` (`src/agents/config-do.ts`) — fully implemented, 16 tests
-- `src/adapters/index.ts` — `Signal` type, `SourceAdapter` interface, empty adapter registry
-- `src/index.ts` — Hono router, **fully implemented** (70 tests passing):
-  - ✅ `GET /health`, auth middleware (single + multi-tenant)
-  - ✅ `GET /watchers`, `POST /watchers`, `PUT /watchers/:name`, `DELETE /watchers/:name`
-  - ✅ `GET /signals`, `GET /signals/:id`, `POST /watchers/:name/trigger`
-- `src/adapters/rss.ts` — **fully implemented**, 20 tests; inserts one row at a time to avoid DO SQLite variable limit
-- `src/db/schema.ts` — `detectedAt` uses `.$defaultFn(() => new Date().toISOString())` (JS-side default, not SQL-level); ensures ISO 8601 format
-- **CLI tool** (`signal-watcher-cli`, sibling repo) — ✅ complete + refactored, end-to-end tested (31 tests):
-  - `swatcher health` — `GET /health` check (no auth)
-  - `swatcher watchers list` — `padEnd` alignment, `--json`, `--limit`/`--offset`
-  - `swatcher signals list` — `--json`, `--limit` parsed as number
-  - `src/types.ts` — shared `Watcher` + `Signal` interfaces
-- **Task 10** — Astro + React islands UI + Better Auth on D1 — ✅ complete, tested end-to-end locally
-  - `signal-watcher-ui/` (single-tenant, open-source) at `/home/simo/Coding/MultiCloudAgentEngine/signal-watcher-ui/`
-  - `signal-watcher-ui-pro/` (multi-tenant, per-user JWT proxy) at `/home/simo/Coding/MultiCloudAgentEngine/signal-watcher-ui-pro/`
-  - Both: 13 tests, `pnpm run build` clean, `pnpm run dev` verified (sign-up, sign-in, logout, API key create/list/revoke, signal feed)
-- **Task 11** — CLI auth flow + backend service binding removal — ✅ complete, deployed + tested end-to-end:
-  - `swatcher login` → browser flow → credentials saved to `~/.config/swatcher/credentials.json` ✅
-  - `swatcher invite` → creates sign-up URL via `ADMIN_TOKEN` ✅
-  - Backend has **no service binding dependencies** — deploys standalone
-  - Single-tenant auth: `token !== env.API_TOKEN → 401` (static comparison, no service binding)
-  - Multi-tenant auth: JWT-only via `JWT_SECRET` (no API key path)
-  - `signal-watcher-ui` CLI exchange returns `env.SIGNAL_WATCHER_TOKEN` directly
-  - `signal-watcher-ui-pro` CLI exchange mints a 1-year JWT signed with `SIGNAL_WATCHER_JWT_SECRET`
-  - Both live at `*.merendis.workers.dev`, D1 migrated, end-to-end verified
-- **Next**: Task 12 — remaining adapters: `github-releases`, `hn-keyword`, `sec-edgar`, `newsapi`, `yahoo-finance`, `polygon`
-
 ### RSS adapter config key
 The RSS adapter reads `config.feed` (not `config.url`). Always create RSS watchers with `--config '{"feed":"https://..."}'`.
 
