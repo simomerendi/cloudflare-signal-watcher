@@ -118,23 +118,18 @@ describe('multi-tenant auth middleware', () => {
 	const mtEnv = { ...env, MULTI_TENANT: 'true' as unknown as 'false', JWT_SECRET };
 	const mtClient = testClient(app, mtEnv);
 
-	it('resolves userId via API key (AUTH_ENTRYPOINT_PRO)', async () => {
-		const res = await mtClient.watchers.$get({}, { headers: { Authorization: 'Bearer mt-token' } });
-		expect(res.status).not.toBe(401);
-	});
-
-	it('resolves userId via JWT fallback when API key is unknown', async () => {
+	it('resolves userId via JWT', async () => {
 		const token = await sign({ sub: 'jwt-user', exp: Math.floor(Date.now() / 1000) + 3600 }, JWT_SECRET, 'HS256');
 		const res = await mtClient.watchers.$get({}, { headers: { Authorization: `Bearer ${token}` } });
 		expect(res.status).not.toBe(401);
 	});
 
-	it('returns 401 when token is neither a valid API key nor a valid JWT', async () => {
+	it('returns 401 when token is not a valid JWT', async () => {
 		const res = await mtClient.watchers.$get({}, { headers: { Authorization: 'Bearer invalid-token' } });
 		expect(res.status).toBe(401);
 	});
 
-	it('returns 401 when JWT_SECRET is missing and token is not an API key', async () => {
+	it('returns 401 when JWT_SECRET is missing', async () => {
 		const noSecretEnv = { ...env, MULTI_TENANT: 'true' as unknown as 'false' };
 		const noSecretClient = testClient(app, noSecretEnv);
 		const res = await noSecretClient.watchers.$get({}, { headers: { Authorization: 'Bearer unknown-token' } });

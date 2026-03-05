@@ -20,18 +20,6 @@
 			}
 		]
 	},
-	"services": [
-		{
-			"binding": "AUTH_ENTRYPOINT",
-			"service": "signal-watcher-ui",
-			"entrypoint": "AuthEntrypoint"
-		},
-		{
-			"binding": "AUTH_ENTRYPOINT_PRO",
-			"service": "signal-watcher-ui-pro",
-			"entrypoint": "AuthEntrypoint"
-		}
-	],
 	"vars": {
 		"MULTI_TENANT": "false"
 	},
