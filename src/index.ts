@@ -5,9 +5,11 @@
  * The Hono app is exported so tests can use `testClient(app, env)`.
  *
  * Auth: all endpoints except GET /health require `Authorization: Bearer <token>`.
- *   Single-tenant (MULTI_TENANT = "false"): Bearer token compared against API_TOKEN.
- *   Multi-tenant  (MULTI_TENANT = "true"):  Bearer token verified as JWT signed with
- *     JWT_SECRET; the `sub` claim becomes the userId used for DO instance naming.
+ *   Single-tenant (MULTI_TENANT = "false"): Bearer token validated via AUTH_ENTRYPOINT
+ *     (signal-watcher-ui AuthEntrypoint); all data lives under one DO instance.
+ *   Multi-tenant  (MULTI_TENANT = "true"):  Token first tried as a Better Auth API key
+ *     via AUTH_ENTRYPOINT_PRO (CLI path); falls back to JWT signed with JWT_SECRET
+ *     (UI pro proxy path). The resolved userId scopes each DO instance name.
  *
  * Hono's chained API is used throughout so that the app type carries route schemas
  * and `testClient` can produce a fully-typed client.
@@ -27,6 +29,12 @@ function instanceId(prefix: string, userId: string | null): string {
 }
 
 type HonoCtx = { Bindings: Env; Variables: { userId: string | null } };
+
+// Minimal interface for the AuthEntrypoint RPC binding from signal-watcher-ui.
+// Extends Fetcher (same base as Service) so a direct cast from the binding is valid.
+interface AuthEntrypointStub extends Fetcher {
+	validateToken(token: string): Promise<string | null>;
+}
 
 // Zod schema for JsonConfig — mirrors the finite-depth type in db/schema.ts so that
 // the inferred type is assignable to JsonConfig without a cast.
@@ -61,17 +69,27 @@ export const app = new Hono<HonoCtx>()
 
 		// Cast required: wrangler types MULTI_TENANT as the literal "false".
 		if ((c.env.MULTI_TENANT as string) === 'true') {
-			const secret = c.env.JWT_SECRET;
-			if (!secret) return c.json({ error: 'Unauthorized' }, 401);
-			try {
-				const payload = await verify(token, secret, 'HS256');
-				c.set('userId', payload.sub as string);
-			} catch {
-				return c.json({ error: 'Unauthorized' }, 401);
+			// Try Better Auth API key first (CLI path — token issued by signal-watcher-ui-pro).
+			const authPro = c.env.AUTH_ENTRYPOINT_PRO as unknown as AuthEntrypointStub;
+			const apiKeyUserId = await authPro.validateToken(token);
+			if (apiKeyUserId !== null) {
+				c.set('userId', apiKeyUserId);
+			} else {
+				// Fall back to JWT (UI pro proxy path — mints short-lived JWTs).
+				const secret = c.env.JWT_SECRET;
+				if (!secret) return c.json({ error: 'Unauthorized' }, 401);
+				try {
+					const payload = await verify(token, secret, 'HS256');
+					c.set('userId', payload.sub as string);
+				} catch {
+					return c.json({ error: 'Unauthorized' }, 401);
+				}
 			}
 		} else {
-			if (token !== c.env.API_TOKEN) return c.json({ error: 'Unauthorized' }, 401);
-			c.set('userId', null);
+			const auth = c.env.AUTH_ENTRYPOINT as AuthEntrypointStub;
+			const userId = await auth.validateToken(token);
+			if (userId === null) return c.json({ error: 'Unauthorized' }, 401);
+			c.set('userId', null); // single-tenant: all data lives under one DO instance
 		}
 
 		await next();
