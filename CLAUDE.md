@@ -167,8 +167,16 @@ DO RPC methods must return fully serializable types. Avoid `Record<string, unkno
   - `signal-watcher-ui/` (single-tenant, open-source) at `/home/simo/Coding/MultiCloudAgentEngine/signal-watcher-ui/`
   - `signal-watcher-ui-pro/` (multi-tenant, per-user JWT proxy) at `/home/simo/Coding/MultiCloudAgentEngine/signal-watcher-ui-pro/`
   - Both: 13 tests, `pnpm run build` clean, `pnpm run dev` verified (sign-up, sign-in, logout, API key create/list/revoke, signal feed)
-- **Next**: Task 11 — wire Better Auth into CLI/MCP auth (AuthEntrypoint service binding)
-- **Then**: Tasks 12–16 — remaining adapters: `github-releases`, `hn-keyword`, `sec-edgar`, `newsapi`, `yahoo-finance`, `polygon`
+- **Task 11** — CLI auth flow + backend service binding removal — ✅ complete, deployed + tested end-to-end:
+  - `swatcher login` → browser flow → credentials saved to `~/.config/swatcher/credentials.json` ✅
+  - `swatcher invite` → creates sign-up URL via `ADMIN_TOKEN` ✅
+  - Backend has **no service binding dependencies** — deploys standalone
+  - Single-tenant auth: `token !== env.API_TOKEN → 401` (static comparison, no service binding)
+  - Multi-tenant auth: JWT-only via `JWT_SECRET` (no API key path)
+  - `signal-watcher-ui` CLI exchange returns `env.SIGNAL_WATCHER_TOKEN` directly
+  - `signal-watcher-ui-pro` CLI exchange mints a 1-year JWT signed with `SIGNAL_WATCHER_JWT_SECRET`
+  - Both live at `*.merendis.workers.dev`, D1 migrated, end-to-end verified
+- **Next**: Task 12 — remaining adapters: `github-releases`, `hn-keyword`, `sec-edgar`, `newsapi`, `yahoo-finance`, `polygon`
 
 ### RSS adapter config key
 The RSS adapter reads `config.feed` (not `config.url`). Always create RSS watchers with `--config '{"feed":"https://..."}'`.
