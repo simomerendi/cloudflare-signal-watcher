@@ -20,10 +20,15 @@ const auth = { Authorization: `Bearer ${TOKEN}` };
 const client = testClient(app, env);
 
 describe('GET /health', () => {
-	it('returns 200 with { ok: true } without auth', async () => {
-		const res = await client.health.$get();
+	it('returns 200 with { ok: true } with auth', async () => {
+		const res = await client.health.$get({}, { headers: auth });
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ ok: true });
+	});
+
+	it('returns 401 without auth', async () => {
+		const res = await client.health.$get();
+		expect(res.status).toBe(401);
 	});
 });
 

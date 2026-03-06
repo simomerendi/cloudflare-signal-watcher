@@ -18,12 +18,17 @@ declare module 'cloudflare:test' {
 	interface ProvidedEnv extends Env {}
 }
 
-const TOKEN = 'test-token';
-const auth = { Authorization: `Bearer ${TOKEN}` };
-const client = testClient(app, env);
+type TestClient = ReturnType<typeof testClient<typeof app>>;
+
+/** Creates a client with its own API_TOKEN so each describe block gets an isolated rate-limit bucket. */
+function makeTestContext(token: string) {
+	const auth = { Authorization: `Bearer ${token}` };
+	const client: TestClient = testClient(app, { ...env, API_TOKEN: token });
+	return { auth, client };
+}
 
 // Helper to delete a watcher without failing if it doesn't exist.
-async function cleanup(name: string) {
+async function cleanup(name: string, client: TestClient, auth: { Authorization: string }) {
 	await client.watchers[':name'].$delete({ param: { name } }, { headers: auth });
 }
 
@@ -50,7 +55,8 @@ async function seedSignal(watcherName: string, signal: SignalInsert) {
 
 describe('GET /signals', () => {
 	const WATCHER = 'int-signals-w1';
-	afterEach(() => cleanup(WATCHER));
+	const { auth, client } = makeTestContext('test-token-signals');
+	afterEach(() => cleanup(WATCHER, client, auth));
 
 	it('returns empty list when no watchers are configured', async () => {
 		const res = await client.signals.$get({}, { headers: auth });
@@ -90,7 +96,8 @@ describe('GET /signals', () => {
 
 describe('GET /signals/:id', () => {
 	const WATCHER = 'int-signal-id-w1';
-	afterEach(() => cleanup(WATCHER));
+	const { auth, client } = makeTestContext('test-token-signal-id');
+	afterEach(() => cleanup(WATCHER, client, auth));
 
 	it('returns 404 when signal does not exist', async () => {
 		const res = await client.signals[':id'].$get({ param: { id: crypto.randomUUID() } }, { headers: auth });
@@ -114,7 +121,8 @@ describe('GET /signals/:id', () => {
 
 describe('PUT /watchers/:name', () => {
 	const NAME = 'int-put-w1';
-	afterEach(() => cleanup(NAME));
+	const { auth, client } = makeTestContext('test-token-put');
+	afterEach(() => cleanup(NAME, client, auth));
 
 	it('returns 404 when watcher does not exist', async () => {
 		const res = await client.watchers[':name'].$put(
@@ -141,6 +149,7 @@ describe('PUT /watchers/:name', () => {
 
 describe('DELETE /watchers/:name', () => {
 	const NAME = 'int-del-w1';
+	const { auth, client } = makeTestContext('test-token-delete');
 
 	it('returns 404 when watcher does not exist', async () => {
 		const res = await client.watchers[':name'].$delete({ param: { name: NAME } }, { headers: auth });
@@ -171,7 +180,8 @@ describe('DELETE /watchers/:name', () => {
 
 describe('POST /watchers/:name/trigger', () => {
 	const NAME = 'int-trigger-w1';
-	afterEach(() => cleanup(NAME));
+	const { auth, client } = makeTestContext('test-token-trigger');
+	afterEach(() => cleanup(NAME, client, auth));
 
 	it('returns 200 with { ok: true }', async () => {
 		await client.watchers.$post(
@@ -186,7 +196,8 @@ describe('POST /watchers/:name/trigger', () => {
 
 describe('POST /watchers', () => {
 	const NAME = 'int-post-w1';
-	afterEach(() => cleanup(NAME));
+	const { auth, client } = makeTestContext('test-token-post');
+	afterEach(() => cleanup(NAME, client, auth));
 
 	it('creates a watcher and returns 201 with the watcher row', async () => {
 		const res = await client.watchers.$post(

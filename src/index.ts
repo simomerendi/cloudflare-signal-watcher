@@ -51,7 +51,6 @@ const updateWatcherBodySchema = z.object({
 // Health check is registered first so the auth middleware does not run for it.
 // Routes are chained so the app type carries full route schemas for testClient inference.
 export const app = new Hono<HonoCtx>()
-	.get('/health', (c) => c.json({ ok: true }))
 	// Auth middleware: validates token and sets the userId context variable.
 	.use('*', async (c, next) => {
 		const auth = c.req.header('Authorization');
@@ -65,18 +64,29 @@ export const app = new Hono<HonoCtx>()
 			if (!secret) return c.json({ error: 'Unauthorized' }, 401);
 			try {
 				const payload = await verify(token, secret, 'HS256');
-				c.set('userId', payload.sub as string);
+				const userId = payload.sub;
+				if (typeof userId !== 'string' || !userId) return c.json({ error: 'Unauthorized' }, 401);
+				const {success} = await c.env.SIGNAL_WATCHER_LIMITER.limit({key: userId})
+				if(!success){
+					return c.json({error: "Rate limit exceeded"}, 429)
+				}
+				c.set('userId', userId);
 			} catch {
 				return c.json({ error: 'Unauthorized' }, 401);
 			}
 		} else {
 			// Single-tenant: compare against static API_TOKEN.
 			if (token !== c.env.API_TOKEN) return c.json({ error: 'Unauthorized' }, 401);
+			const {success} = await c.env.SIGNAL_WATCHER_LIMITER.limit({key: c.env.API_TOKEN})
+			if(!success){
+				return c.json({error: "Rate limit exceeded"}, 429);
+			}
 			c.set('userId', null); // single-tenant: all data lives under one DO instance
 		}
 
 		await next();
 	})
+	.get('/health', (c) => c.json({ ok: true }))
 	// ---------- Watcher routes (delegate to ConfigDO via RPC) ----------
 	.get('/watchers', async (c) => {
 		const limit = Number(c.req.query('limit') ?? '100');
